@@ -453,7 +453,7 @@ function drawBall(ball) {
     0,
     Math.PI * 2
   );
-  context.fillStyle = "#fff";
+  context.fillStyle = "#0b4f78";
   context.fill();
   context.restore();
 
