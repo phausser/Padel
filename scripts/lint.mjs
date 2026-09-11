@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const ignored = new Set([".git", "node_modules"]);
+const ignored = new Set([".git", "build", "coverage", "dist", "node_modules"]);
 const sourceExtensions = new Set([".js", ".mjs"]);
 const textExtensions = new Set([".css", ".html", ".json", ".md", ".yml", ".yaml"]);
 const failures = [];

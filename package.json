@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
     "test": "node tests/smoke.mjs"
   },

@@ -25,7 +25,14 @@ Open `index.html` directly in a browser, or serve the directory with any static 
 ```sh
 npm run lint
 npm test
+npm run build
 ```
+
+The build command writes the static GitHub Pages artifact to `dist/`.
+
+## Deployment
+
+Merges to `main` deploy automatically to GitHub Pages through `.github/workflows/pages.yml`.
 
 ## Roadmap
 
