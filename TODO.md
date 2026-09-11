@@ -17,11 +17,11 @@
 
 ## Phase 2 - Canvas and Responsive Layout
 
-- [ ] Initialize canvas and 2D context.
-- [ ] Handle device pixel ratio.
-- [ ] Resize canvas on window resize/orientation change.
-- [ ] Compute court bounds from viewport size.
-- [ ] Keep the court readable on portrait mobile and desktop.
+- [x] Initialize canvas and 2D context.
+- [x] Handle device pixel ratio.
+- [x] Resize canvas on window resize/orientation change.
+- [x] Compute court bounds from viewport size.
+- [x] Keep the court readable on portrait mobile and desktop.
 
 ## Phase 3 - Rendering
 
