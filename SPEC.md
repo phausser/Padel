@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a mobile-optimized browser game with JavaScript, HTML, CSS, and Canvas. The game should feel like a glowing black-and-white Pong interpretation of padel: simple, fast, readable, and playable with mouse or touch.
+Build a mobile-optimized browser game with JavaScript, HTML, CSS, and Canvas. The game should feel like a glowing white-line Pong interpretation of padel on a bright blue court background: simple, fast, readable, and playable with mouse or touch.
 
 ## Core Concept
 
@@ -24,7 +24,7 @@ The player controls a paddle near the bottom of a vertically oriented padel cour
 
 ## Visual Style
 
-- Black background.
+- Blue background: `#1E8FD5`.
 - White foreground.
 - High-contrast glowing line art.
 - Pong-like minimalism.
@@ -170,4 +170,3 @@ The first version may start immediately after a tap/click.
 - Haptic feedback on supported mobile browsers.
 - Serve mechanics.
 - More advanced ball height and wall physics.
-

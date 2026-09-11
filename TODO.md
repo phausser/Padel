@@ -25,16 +25,16 @@
 
 ## Phase 3 - Rendering
 
-- [ ] Draw black background.
-- [ ] Draw perspective padel court.
-- [ ] Draw continuous glass wall outlines.
-- [ ] Draw center net as a glowing gridded surface.
-- [ ] Draw simplified court markings.
-- [ ] Draw player paddle.
-- [ ] Draw AI paddle.
-- [ ] Draw glowing ball.
-- [ ] Draw score display.
-- [ ] Add start/game-over overlay text.
+- [x] Draw blue background.
+- [x] Draw perspective padel court.
+- [x] Draw continuous glass wall outlines.
+- [x] Draw center net as a glowing gridded surface.
+- [x] Draw simplified court markings.
+- [x] Draw player paddle.
+- [x] Draw AI paddle.
+- [x] Draw glowing ball.
+- [x] Draw score display.
+- [x] Add start/game-over overlay text.
 
 ## Phase 4 - Input
 

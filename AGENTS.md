@@ -12,7 +12,7 @@ Padel Pong is a mobile-first browser game built with plain HTML, CSS, JavaScript
 
 ## Development Guidelines
 
-- Preserve the black-and-white glowing Pong-like visual direction.
+- Preserve the bright blue background with white glowing Pong-like line art.
 - Prioritize portrait mobile usability, then desktop.
 - Keep UI text minimal and avoid instructional panels inside the main play surface unless a game state requires it.
 - Avoid adding dependencies for simple checks or browser-native behavior.
