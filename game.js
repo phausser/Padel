@@ -9,6 +9,8 @@ const MIN_COURT_MARGIN = 30;
 const MAX_DEVICE_PIXEL_RATIO = 3;
 const BACKGROUND_COLOR = "#1E8FD5";
 const WALL_DEPTH_RATIO = 0.075;
+const PLAYER_PADDLE_Y = 18.35;
+const PADDLE_SMOOTHING = 0.35;
 
 const renderState = {
   score: {
@@ -17,7 +19,7 @@ const renderState = {
   },
   playerPaddle: {
     x: 5,
-    y: 18.35,
+    y: PLAYER_PADDLE_Y,
     width: 2.15
   },
   aiPaddle: {
@@ -30,6 +32,12 @@ const renderState = {
     y: 12.25,
     radius: 0.16
   }
+};
+
+const inputState = {
+  activePointerId: null,
+  targetX: renderState.playerPaddle.x,
+  smoothingFrame: 0
 };
 
 const layout = {
@@ -103,6 +111,30 @@ function queueResize() {
     pendingResizeFrame = 0;
     resizeCanvas();
   });
+}
+
+function queueInputRender() {
+  if (inputState.smoothingFrame !== 0) {
+    return;
+  }
+
+  inputState.smoothingFrame = requestAnimationFrame(updatePlayerPaddle);
+}
+
+function updatePlayerPaddle() {
+  inputState.smoothingFrame = 0;
+
+  const paddle = renderState.playerPaddle;
+  const nextX = lerp(paddle.x, inputState.targetX, PADDLE_SMOOTHING);
+
+  paddle.x = clampPlayerPaddleX(
+    Math.abs(nextX - inputState.targetX) < 0.01 ? inputState.targetX : nextX
+  );
+  drawShell();
+
+  if (paddle.x !== inputState.targetX) {
+    queueInputRender();
+  }
 }
 
 function drawShell() {
@@ -343,6 +375,21 @@ function projectCourtPoint(xMeters, yMeters) {
   };
 }
 
+function screenToCourtPoint(screenX, screenY) {
+  const court = layout.court;
+
+  return {
+    x: ((screenX - court.x) / court.width) * COURT_WIDTH_METERS,
+    y: ((screenY - court.y) / court.height) * COURT_LENGTH_METERS
+  };
+}
+
+function clampPlayerPaddleX(xMeters) {
+  const halfWidth = renderState.playerPaddle.width / 2;
+
+  return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
+}
+
 function applyGlow(blur, alpha) {
   context.strokeStyle = "#fff";
   context.fillStyle = "#fff";
@@ -353,6 +400,10 @@ function applyGlow(blur, alpha) {
 
 function lerp(start, end, amount) {
   return start + (end - start) * amount;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function lerpPoint(start, end, amount) {
@@ -366,9 +417,45 @@ function preventGameGesture(event) {
   event.preventDefault();
 }
 
+function handlePointerInput(event) {
+  if (
+    inputState.activePointerId !== null &&
+    event.pointerId !== inputState.activePointerId
+  ) {
+    return;
+  }
+
+  const courtPoint = screenToCourtPoint(event.clientX, event.clientY);
+  inputState.targetX = clampPlayerPaddleX(courtPoint.x);
+  queueInputRender();
+}
+
+function handlePointerDown(event) {
+  event.preventDefault();
+  inputState.activePointerId = event.pointerId;
+  canvas.setPointerCapture?.(event.pointerId);
+  handlePointerInput(event);
+}
+
+function handlePointerMove(event) {
+  event.preventDefault();
+  handlePointerInput(event);
+}
+
+function handlePointerEnd(event) {
+  if (event.pointerId === inputState.activePointerId) {
+    inputState.activePointerId = null;
+    canvas.releasePointerCapture?.(event.pointerId);
+  }
+}
+
 window.addEventListener("resize", queueResize);
 window.addEventListener("orientationchange", queueResize);
 window.visualViewport?.addEventListener("resize", queueResize);
+canvas.addEventListener("pointerdown", handlePointerDown);
+canvas.addEventListener("pointermove", handlePointerMove);
+canvas.addEventListener("pointerup", handlePointerEnd);
+canvas.addEventListener("pointercancel", handlePointerEnd);
 canvas.addEventListener("touchstart", preventGameGesture, { passive: false });
 canvas.addEventListener("touchmove", preventGameGesture, { passive: false });
 canvas.addEventListener("contextmenu", preventGameGesture);

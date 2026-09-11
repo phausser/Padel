@@ -36,6 +36,11 @@ assert.match(game, /drawPaddle/, "game.js draws paddles");
 assert.match(game, /drawBall/, "game.js draws the ball");
 assert.match(game, /drawScore/, "game.js draws score text");
 assert.match(game, /drawReadyOverlay/, "game.js draws ready overlay text");
+assert.match(game, /screenToCourtPoint/, "game.js maps pointer positions to court coordinates");
+assert.match(game, /clampPlayerPaddleX/, "game.js clamps the player paddle to playable bounds");
+assert.match(game, /PADDLE_SMOOTHING/, "game.js smooths player paddle input");
+assert.match(game, /addEventListener\("pointermove"/, "game.js listens for pointer movement");
+assert.match(game, /addEventListener\("pointerdown"/, "game.js listens for pointer drag starts");
 assert.match(game, /addEventListener\("resize"/, "game.js listens for resize events");
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 

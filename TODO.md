@@ -38,11 +38,11 @@
 
 ## Phase 4 - Input
 
-- [ ] Add mouse movement input for desktop.
-- [ ] Add touch drag input for mobile.
-- [ ] Map pointer position to court coordinates.
-- [ ] Clamp player paddle inside playable bounds.
-- [ ] Add optional paddle smoothing.
+- [x] Add mouse movement input for desktop.
+- [x] Add touch drag input for mobile.
+- [x] Map pointer position to court coordinates.
+- [x] Clamp player paddle inside playable bounds.
+- [x] Add optional paddle smoothing.
 
 ## Phase 5 - Core Physics
 
