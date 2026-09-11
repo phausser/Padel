@@ -24,6 +24,9 @@ const BALL_NET_HEIGHT = 0.42;
 const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
 const MAX_FRAME_DELTA = 1 / 30;
+const POINT_RESET_DELAY_MS = 900;
+const WINNING_SCORE = 7;
+const WIN_BY = 2;
 
 const renderState = {
   score: {
@@ -62,7 +65,11 @@ const inputState = {
 const gameState = {
   status: "ready",
   animationFrame: 0,
-  lastTime: 0
+  lastTime: 0,
+  pointResumeTime: 0,
+  message: "TAP / CLICK",
+  ballSide: "player",
+  bouncesOnSide: 0
 };
 
 const layout = {
@@ -175,10 +182,20 @@ function startGame() {
     return;
   }
 
+  const isLoopRunning = gameState.animationFrame !== 0;
+
+  if (gameState.status === "gameover") {
+    renderState.score.player = 0;
+    renderState.score.ai = 0;
+  }
+
   gameState.status = "playing";
   gameState.lastTime = performance.now();
   resetBall();
-  gameState.animationFrame = requestAnimationFrame(updateGame);
+
+  if (!isLoopRunning) {
+    gameState.animationFrame = requestAnimationFrame(updateGame);
+  }
 }
 
 function resetBall() {
@@ -192,6 +209,9 @@ function resetBall() {
     hasCourtBounce: false,
     lastHitBy: "player"
   });
+  gameState.message = "";
+  gameState.ballSide = getBallSide(renderState.ball.y);
+  gameState.bouncesOnSide = 0;
 }
 
 function updateGame(time) {
@@ -199,7 +219,12 @@ function updateGame(time) {
 
   gameState.lastTime = time;
   movePlayerPaddleTowardTarget();
-  updateBall(delta);
+  if (gameState.status === "playing") {
+    updateBall(delta);
+  } else if (gameState.status === "point" && time >= gameState.pointResumeTime) {
+    gameState.status = "playing";
+    resetBall();
+  }
   drawShell();
   gameState.animationFrame = requestAnimationFrame(updateGame);
 }
@@ -213,12 +238,22 @@ function updateBall(delta) {
   ball.y += ball.vy * delta;
   ball.z += ball.vz * delta;
 
+  trackBallSide(ball);
   handleCourtBounce(ball);
+  if (gameState.status !== "playing") {
+    return;
+  }
+
   handleSideGlassCollision(ball);
   handleBackGlassCollision(ball);
   handleNetCollision(ball, previousY);
+  if (gameState.status !== "playing") {
+    return;
+  }
+
   handlePaddleCollision(ball, renderState.playerPaddle, -1, previousY, "player");
   handlePaddleCollision(ball, renderState.aiPaddle, 1, previousY, "ai");
+  handleDeadBall(ball);
 }
 
 function handleCourtBounce(ball) {
@@ -228,9 +263,14 @@ function handleCourtBounce(ball) {
 
   ball.z = 0;
   ball.hasCourtBounce = true;
+  gameState.bouncesOnSide += 1;
   ball.vx *= BALL_FLOOR_FRICTION;
   ball.vy *= BALL_FLOOR_FRICTION;
   ball.vz = Math.max(BALL_MIN_BOUNCE_VELOCITY, Math.abs(ball.vz) * BALL_FLOOR_RESTITUTION);
+
+  if (gameState.bouncesOnSide >= 2) {
+    awardPoint(getOpponentSide(gameState.ballSide), "DOUBLE BOUNCE");
+  }
 }
 
 function handleSideGlassCollision(ball) {
@@ -279,6 +319,7 @@ function handleNetCollision(ball, previousY) {
   ball.vy = -ball.vy * BALL_NET_RESTITUTION;
   ball.vx *= 0.58;
   ball.vz = Math.max(0.45, ball.vz * 0.42);
+  awardPoint(getOpponentSide(ball.lastHitBy), "NET");
 }
 
 function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
@@ -302,6 +343,69 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   ball.vz = BALL_PADDLE_LIFT;
   ball.hasCourtBounce = false;
   ball.lastHitBy = hitter;
+  gameState.ballSide = hitter;
+  gameState.bouncesOnSide = 0;
+}
+
+function handleDeadBall(ball) {
+  const tooSlow =
+    Math.hypot(ball.vx, ball.vy) < 0.55 && ball.z < 0.16 && Math.abs(ball.vz) < 1.35;
+  const behindPlayer = ball.y > PLAYER_PADDLE_Y + 1.15;
+  const behindAi = ball.y < AI_PADDLE_Y - 1.15;
+
+  if (behindPlayer) {
+    awardPoint("ai", "OUT");
+  } else if (behindAi) {
+    awardPoint("player", "OUT");
+  } else if (tooSlow) {
+    awardPoint(getOpponentSide(ball.lastHitBy), "DEAD BALL");
+  }
+}
+
+function trackBallSide(ball) {
+  const currentSide = getBallSide(ball.y);
+
+  if (currentSide !== gameState.ballSide) {
+    gameState.ballSide = currentSide;
+    gameState.bouncesOnSide = 0;
+  }
+}
+
+function getBallSide(yMeters) {
+  return yMeters >= COURT_LENGTH_METERS / 2 ? "player" : "ai";
+}
+
+function getOpponentSide(side) {
+  return side === "player" ? "ai" : "player";
+}
+
+function awardPoint(winner, reason) {
+  if (gameState.status !== "playing") {
+    return;
+  }
+
+  renderState.score[winner] += 1;
+  gameState.message = winner === "player" ? "POINT" : "AI POINT";
+
+  if (reason === "NET") {
+    gameState.message = winner === "player" ? "NET - POINT" : "NET - AI POINT";
+  }
+
+  if (hasWinner()) {
+    gameState.status = "gameover";
+    gameState.message = renderState.score.player > renderState.score.ai ? "YOU WIN" : "AI WINS";
+    return;
+  }
+
+  gameState.status = "point";
+  gameState.pointResumeTime = performance.now() + POINT_RESET_DELAY_MS;
+}
+
+function hasWinner() {
+  const highScore = Math.max(renderState.score.player, renderState.score.ai);
+  const scoreDifference = Math.abs(renderState.score.player - renderState.score.ai);
+
+  return highScore >= WINNING_SCORE && scoreDifference >= WIN_BY;
 }
 
 function drawShell() {
@@ -317,8 +421,8 @@ function drawShell() {
   drawPaddle(renderState.playerPaddle);
   drawBall(renderState.ball);
   drawScore();
-  if (gameState.status === "ready") {
-    drawReadyOverlay();
+  if (gameState.status !== "playing") {
+    drawOverlay();
   }
 }
 
@@ -482,17 +586,22 @@ function drawScore() {
   context.restore();
 }
 
-function drawReadyOverlay() {
+function drawOverlay() {
   const court = layout.court;
   const center = projectCourtPoint(5, 16.35);
+  const text = gameState.status === "gameover" ? `${gameState.message} / TAP` : gameState.message;
 
   context.save();
   applyGlow(8, 0.74);
   context.font = `${Math.max(12, Math.min(16, court.width * 0.05))}px monospace`;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText("TAP / CLICK", center.x, center.y);
+  context.fillText(text, center.x, center.y);
   context.restore();
+}
+
+function drawReadyOverlay() {
+  drawOverlay();
 }
 
 function drawProjectedLine(x1, y1, x2, y2, alpha = 1) {

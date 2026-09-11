@@ -58,14 +58,14 @@
 
 ## Phase 6 - Rules and Scoring
 
-- [ ] Track which side the ball is on.
-- [ ] Track bounce count per side.
-- [ ] Award point after second bounce on a side.
-- [ ] Award point when the ball fails to cross the net legally.
-- [ ] Reset ball after a point.
-- [ ] Implement first-to-7, win-by-2 scoring.
-- [ ] Implement game-over state.
-- [ ] Implement restart.
+- [x] Track which side the ball is on.
+- [x] Track bounce count per side.
+- [x] Award point after second bounce on a side.
+- [x] Award point when the ball fails to cross the net legally.
+- [x] Reset ball after a point.
+- [x] Implement first-to-7, win-by-2 scoring.
+- [x] Implement game-over state.
+- [x] Implement restart.
 
 ## Phase 7 - AI
 

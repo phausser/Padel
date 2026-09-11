@@ -50,6 +50,15 @@ assert.match(game, /handlePaddleCollision/, "game.js handles paddle collision");
 assert.match(game, /handleSideGlassCollision/, "game.js handles side glass collision");
 assert.match(game, /handleBackGlassCollision/, "game.js handles back glass collision");
 assert.match(game, /handleNetCollision/, "game.js handles net collision");
+assert.match(game, /ballSide/, "game.js tracks which side the ball is on");
+assert.match(game, /bouncesOnSide/, "game.js tracks bounce count per side");
+assert.match(game, /awardPoint/, "game.js awards points from rule events");
+assert.match(game, /POINT_RESET_DELAY_MS/, "game.js resets after scored points");
+assert.match(game, /WINNING_SCORE\s*=\s*7/, "game.js uses first-to-7 scoring");
+assert.match(game, /WIN_BY\s*=\s*2/, "game.js requires win by two");
+assert.match(game, /status:\s*"ready"/, "game.js has a ready state");
+assert.match(game, /"gameover"/, "game.js has a game-over state");
+assert.match(game, /renderState\.score\.player\s*=\s*0/, "game.js restarts by resetting score");
 assert.match(game, /addEventListener\("resize"/, "game.js listens for resize events");
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 
