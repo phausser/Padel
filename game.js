@@ -2,6 +2,10 @@
 
 const canvas = document.querySelector("#game-canvas");
 const context = canvas.getContext("2d");
+const COURT_WIDTH_METERS = 10;
+const COURT_LENGTH_METERS = 20;
+const COURT_ASPECT_RATIO = COURT_WIDTH_METERS / COURT_LENGTH_METERS;
+const COURT_MARGIN = 24;
 
 function resizeCanvas() {
   const width = window.innerWidth;
@@ -17,10 +21,31 @@ function resizeCanvas() {
   drawShell(width, height);
 }
 
+function getCourtBounds(width, height) {
+  const safeWidth = Math.max(0, width - COURT_MARGIN * 2);
+  const safeHeight = Math.max(0, height - COURT_MARGIN * 2);
+  let courtWidth = Math.min(safeWidth, safeHeight * COURT_ASPECT_RATIO);
+  let courtHeight = courtWidth / COURT_ASPECT_RATIO;
+
+  if (courtHeight > safeHeight) {
+    courtHeight = safeHeight;
+    courtWidth = courtHeight * COURT_ASPECT_RATIO;
+  }
+
+  return {
+    x: (width - courtWidth) / 2,
+    y: (height - courtHeight) / 2,
+    width: courtWidth,
+    height: courtHeight
+  };
+}
+
 function drawShell(width, height) {
   context.clearRect(0, 0, width, height);
   context.fillStyle = "#000";
   context.fillRect(0, 0, width, height);
+
+  const court = getCourtBounds(width, height);
 
   context.save();
   context.strokeStyle = "#fff";
@@ -28,12 +53,11 @@ function drawShell(width, height) {
   context.shadowColor = "#fff";
   context.shadowBlur = 14;
 
-  const inset = Math.max(24, Math.min(width, height) * 0.08);
-  context.strokeRect(inset, inset, width - inset * 2, height - inset * 2);
+  context.strokeRect(court.x, court.y, court.width, court.height);
 
   context.beginPath();
-  context.moveTo(inset, height / 2);
-  context.lineTo(width - inset, height / 2);
+  context.moveTo(court.x, court.y + court.height / 2);
+  context.lineTo(court.x + court.width, court.y + court.height / 2);
   context.stroke();
   context.restore();
 }

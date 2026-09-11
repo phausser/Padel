@@ -17,6 +17,9 @@ assert.match(css, /touch-action:\s*none;/, "style.css disables default touch ges
 assert.match(css, /#game-canvas/, "style.css styles the fullscreen canvas");
 
 assert.match(game, /devicePixelRatio/, "game.js accounts for device pixel ratio");
+assert.match(game, /COURT_WIDTH_METERS\s*=\s*10/, "game.js uses doubles padel court width");
+assert.match(game, /COURT_LENGTH_METERS\s*=\s*20/, "game.js uses doubles padel court length");
+assert.match(game, /COURT_ASPECT_RATIO/, "game.js derives court aspect ratio from dimensions");
 assert.match(game, /addEventListener\("resize"/, "game.js listens for resize events");
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 
