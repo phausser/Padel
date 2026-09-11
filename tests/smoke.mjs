@@ -59,6 +59,11 @@ assert.match(game, /WIN_BY\s*=\s*2/, "game.js requires win by two");
 assert.match(game, /status:\s*"ready"/, "game.js has a ready state");
 assert.match(game, /"gameover"/, "game.js has a game-over state");
 assert.match(game, /renderState\.score\.player\s*=\s*0/, "game.js restarts by resetting score");
+assert.match(game, /aiState/, "game.js tracks AI paddle state");
+assert.match(game, /AI_MAX_SPEED/, "game.js limits AI paddle speed");
+assert.match(game, /updateAiPaddle/, "game.js updates AI paddle movement");
+assert.match(game, /predictBallXAtY/, "game.js predicts the ball target on the AI side");
+assert.match(game, /AI_PREDICTION_ERROR/, "game.js gives the AI a tunable mistake factor");
 assert.match(game, /addEventListener\("resize"/, "game.js listens for resize events");
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 

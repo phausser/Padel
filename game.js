@@ -27,6 +27,10 @@ const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
 const WINNING_SCORE = 7;
 const WIN_BY = 2;
+const AI_MAX_SPEED = 4.7;
+const AI_REACTION_INTERVAL = 0.18;
+const AI_CENTERING_SPEED = 1.25;
+const AI_PREDICTION_ERROR = 0.42;
 
 const renderState = {
   score: {
@@ -60,6 +64,12 @@ const inputState = {
   activePointerId: null,
   targetX: renderState.playerPaddle.x,
   smoothingFrame: 0
+};
+
+const aiState = {
+  targetX: renderState.aiPaddle.x,
+  reactionTimer: 0,
+  mistakeOffset: 0
 };
 
 const gameState = {
@@ -212,6 +222,9 @@ function resetBall() {
   gameState.message = "";
   gameState.ballSide = getBallSide(renderState.ball.y);
   gameState.bouncesOnSide = 0;
+  aiState.targetX = renderState.aiPaddle.x;
+  aiState.reactionTimer = 0;
+  aiState.mistakeOffset = 0;
 }
 
 function updateGame(time) {
@@ -220,6 +233,7 @@ function updateGame(time) {
   gameState.lastTime = time;
   movePlayerPaddleTowardTarget();
   if (gameState.status === "playing") {
+    updateAiPaddle(delta);
     updateBall(delta);
   } else if (gameState.status === "point" && time >= gameState.pointResumeTime) {
     gameState.status = "playing";
@@ -254,6 +268,64 @@ function updateBall(delta) {
   handlePaddleCollision(ball, renderState.playerPaddle, -1, previousY, "player");
   handlePaddleCollision(ball, renderState.aiPaddle, 1, previousY, "ai");
   handleDeadBall(ball);
+}
+
+function updateAiPaddle(delta) {
+  const ball = renderState.ball;
+
+  aiState.reactionTimer -= delta;
+  if (aiState.reactionTimer <= 0) {
+    aiState.targetX = getAiTargetX(ball);
+    aiState.reactionTimer = AI_REACTION_INTERVAL + Math.abs(ball.vy) * 0.008;
+  }
+
+  const paddle = renderState.aiPaddle;
+  const maxStep = AI_MAX_SPEED * delta;
+  const nextX = moveToward(paddle.x, aiState.targetX, maxStep);
+
+  paddle.x = clampAiPaddleX(nextX);
+}
+
+function getAiTargetX(ball) {
+  const ballMovingTowardAi = ball.vy < 0;
+  const ballNearAiSide = ball.y < COURT_LENGTH_METERS * 0.68;
+
+  if (!ballMovingTowardAi && !ballNearAiSide) {
+    aiState.mistakeOffset = lerp(aiState.mistakeOffset, 0, 0.3);
+    return moveToward(renderState.aiPaddle.x, COURT_WIDTH_METERS / 2, AI_CENTERING_SPEED);
+  }
+
+  const predictedX = predictBallXAtY(ball, AI_PADDLE_Y);
+  const pressure = clamp(Math.abs(ball.vy) / 7, 0, 1);
+
+  aiState.mistakeOffset = lerp(
+    aiState.mistakeOffset,
+    (Math.random() * 2 - 1) * AI_PREDICTION_ERROR * pressure,
+    0.24
+  );
+
+  return clampAiPaddleX(predictedX + aiState.mistakeOffset);
+}
+
+function predictBallXAtY(ball, targetY) {
+  if (Math.abs(ball.vy) < 0.01) {
+    return ball.x;
+  }
+
+  const timeToTarget = Math.max(0, (targetY - ball.y) / ball.vy);
+  let predictedX = ball.x + ball.vx * timeToTarget;
+  const minX = ball.radius;
+  const maxX = COURT_WIDTH_METERS - ball.radius;
+
+  while (predictedX < minX || predictedX > maxX) {
+    if (predictedX < minX) {
+      predictedX = minX + (minX - predictedX);
+    } else if (predictedX > maxX) {
+      predictedX = maxX - (predictedX - maxX);
+    }
+  }
+
+  return predictedX;
 }
 
 function handleCourtBounce(ball) {
@@ -689,6 +761,12 @@ function clampPlayerPaddleX(xMeters) {
   return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
 }
 
+function clampAiPaddleX(xMeters) {
+  const halfWidth = renderState.aiPaddle.width / 2;
+
+  return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
+}
+
 function applyGlow(blur, alpha) {
   context.strokeStyle = "#fff";
   context.fillStyle = "#fff";
@@ -703,6 +781,14 @@ function lerp(start, end, amount) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function moveToward(current, target, maxStep) {
+  if (Math.abs(target - current) <= maxStep) {
+    return target;
+  }
+
+  return current + Math.sign(target - current) * maxStep;
 }
 
 function lerpPoint(start, end, amount) {

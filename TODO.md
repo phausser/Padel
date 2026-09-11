@@ -69,11 +69,11 @@
 
 ## Phase 7 - AI
 
-- [ ] Add AI paddle state.
-- [ ] Predict ball target position on AI side.
-- [ ] Move AI paddle with limited speed.
-- [ ] Add simple mistake/randomness factor.
-- [ ] Tune AI difficulty for a playable first version.
+- [x] Add AI paddle state.
+- [x] Predict ball target position on AI side.
+- [x] Move AI paddle with limited speed.
+- [x] Add simple mistake/randomness factor.
+- [x] Tune AI difficulty for a playable first version.
 
 ## Phase 8 - Mobile Polish
 
