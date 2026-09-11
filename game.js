@@ -5,10 +5,10 @@ const context = canvas.getContext("2d");
 const COURT_WIDTH_METERS = 10;
 const COURT_LENGTH_METERS = 20;
 const COURT_ASPECT_RATIO = COURT_WIDTH_METERS / COURT_LENGTH_METERS;
-const MIN_COURT_MARGIN = 18;
+const MIN_COURT_MARGIN = 30;
 const MAX_DEVICE_PIXEL_RATIO = 3;
-const FAR_WIDTH_SCALE = 0.68;
 const BACKGROUND_COLOR = "#1E8FD5";
+const WALL_DEPTH_RATIO = 0.075;
 
 const renderState = {
   score: {
@@ -110,8 +110,8 @@ function drawShell() {
 
   context.clearRect(0, 0, width, height);
   drawBackground(width, height);
-  drawCourtSurface();
   drawGlassWalls();
+  drawCourtSurface();
   drawCourtMarkings();
   drawNet();
   drawPaddle(renderState.aiPaddle);
@@ -127,45 +127,59 @@ function drawBackground(width, height) {
 }
 
 function drawCourtSurface() {
-  const corners = getCourtCorners();
+  const { x, y, width, height } = layout.court;
 
   context.save();
-  context.fillStyle = "#020202";
-  context.beginPath();
-  corners.forEach((corner, index) => {
-    if (index === 0) {
-      context.moveTo(corner.x, corner.y);
-    } else {
-      context.lineTo(corner.x, corner.y);
-    }
-  });
-  context.closePath();
-  context.fill();
+  context.fillStyle = BACKGROUND_COLOR;
+  context.fillRect(x, y, width, height);
+  applyGlow(14, 0.95);
+  context.lineWidth = 2.2;
+  context.strokeRect(x, y, width, height);
+  context.strokeRect(x + width * 0.004, y + height * 0.004, width * 0.992, height * 0.992);
   context.restore();
 }
 
 function drawGlassWalls() {
-  const corners = getCourtCorners();
+  const walls = getWallSegments();
 
   context.save();
-  applyGlow(18, 0.95);
-  context.lineWidth = 2.2;
-  context.beginPath();
-  corners.forEach((corner, index) => {
-    if (index === 0) {
-      context.moveTo(corner.x, corner.y);
-    } else {
-      context.lineTo(corner.x, corner.y);
-    }
+  context.fillStyle = "rgba(255, 255, 255, 0.16)";
+  context.shadowColor = "#fff";
+  context.shadowBlur = 12;
+
+  walls.forEach((wall) => {
+    context.beginPath();
+    context.moveTo(wall.innerStart.x, wall.innerStart.y);
+    context.lineTo(wall.innerEnd.x, wall.innerEnd.y);
+    context.lineTo(wall.outerEnd.x, wall.outerEnd.y);
+    context.lineTo(wall.outerStart.x, wall.outerStart.y);
+    context.closePath();
+    context.fill();
   });
-  context.closePath();
-  context.stroke();
+
+  applyGlow(16, 0.95);
+  context.lineWidth = 1.8;
+
+  walls.forEach((wall) => {
+    drawScreenLine(wall.innerStart, wall.innerEnd);
+    drawScreenLine(wall.outerStart, wall.outerEnd);
+    drawScreenLine(wall.innerStart, wall.outerStart, 0.44);
+    drawScreenLine(wall.innerEnd, wall.outerEnd, 0.44);
+  });
 
   context.globalAlpha = 0.52;
   context.lineWidth = 1;
-  [2.5, 5, 7.5].forEach((x) => {
-    drawProjectedLine(x, 0, x, 20);
+  walls.forEach((wall) => {
+    for (let index = 1; index < 5; index += 1) {
+      const amount = index / 5;
+      drawScreenLine(
+        lerpPoint(wall.innerStart, wall.innerEnd, amount),
+        lerpPoint(wall.outerStart, wall.outerEnd, amount),
+        0.38
+      );
+    }
   });
+
   context.restore();
 }
 
@@ -276,12 +290,45 @@ function drawProjectedLine(x1, y1, x2, y2, alpha = 1) {
   context.restore();
 }
 
-function getCourtCorners() {
+function drawScreenLine(start, end, alpha = 1) {
+  context.save();
+  context.globalAlpha *= alpha;
+  context.beginPath();
+  context.moveTo(start.x, start.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+  context.restore();
+}
+
+function getWallSegments() {
+  const { x, y, width, height } = layout.court;
+  const wallDepth = Math.max(12, Math.min(width, height) * WALL_DEPTH_RATIO);
+
   return [
-    projectCourtPoint(0, 0),
-    projectCourtPoint(10, 0),
-    projectCourtPoint(10, 20),
-    projectCourtPoint(0, 20)
+    {
+      innerStart: { x, y },
+      innerEnd: { x: x + width, y },
+      outerStart: { x: x - wallDepth, y: y - wallDepth },
+      outerEnd: { x: x + width + wallDepth, y: y - wallDepth }
+    },
+    {
+      innerStart: { x: x + width, y },
+      innerEnd: { x: x + width, y: y + height },
+      outerStart: { x: x + width + wallDepth, y: y - wallDepth },
+      outerEnd: { x: x + width + wallDepth, y: y + height + wallDepth }
+    },
+    {
+      innerStart: { x: x + width, y: y + height },
+      innerEnd: { x, y: y + height },
+      outerStart: { x: x + width + wallDepth, y: y + height + wallDepth },
+      outerEnd: { x: x - wallDepth, y: y + height + wallDepth }
+    },
+    {
+      innerStart: { x, y: y + height },
+      innerEnd: { x, y },
+      outerStart: { x: x - wallDepth, y: y + height + wallDepth },
+      outerEnd: { x: x - wallDepth, y: y - wallDepth }
+    }
   ];
 }
 
@@ -289,11 +336,9 @@ function projectCourtPoint(xMeters, yMeters) {
   const court = layout.court;
   const yRatio = yMeters / COURT_LENGTH_METERS;
   const xRatio = xMeters / COURT_WIDTH_METERS;
-  const perspectiveWidth = court.width * lerp(FAR_WIDTH_SCALE, 1, yRatio);
-  const centerX = court.x + court.width / 2;
 
   return {
-    x: centerX + (xRatio - 0.5) * perspectiveWidth,
+    x: court.x + xRatio * court.width,
     y: court.y + yRatio * court.height
   };
 }
@@ -308,6 +353,13 @@ function applyGlow(blur, alpha) {
 
 function lerp(start, end, amount) {
   return start + (end - start) * amount;
+}
+
+function lerpPoint(start, end, amount) {
+  return {
+    x: lerp(start.x, end.x, amount),
+    y: lerp(start.y, end.y, amount)
+  };
 }
 
 function preventGameGesture(event) {

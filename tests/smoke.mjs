@@ -28,6 +28,8 @@ assert.match(game, /visualViewport/, "game.js accounts for the mobile visual vie
 assert.match(game, /requestAnimationFrame/, "game.js batches resize work into animation frames");
 assert.match(game, /drawCourtSurface/, "game.js draws the court surface");
 assert.match(game, /drawGlassWalls/, "game.js draws glass wall outlines");
+assert.doesNotMatch(game, /FAR_WIDTH_SCALE/, "game.js does not narrow the far side of the court");
+assert.match(game, /WALL_DEPTH_RATIO/, "game.js draws walls outward from the court");
 assert.match(game, /drawNet/, "game.js draws the center net");
 assert.match(game, /drawCourtMarkings/, "game.js draws court markings");
 assert.match(game, /drawPaddle/, "game.js draws paddles");

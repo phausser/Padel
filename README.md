@@ -4,7 +4,7 @@ Padel Pong is a mobile-first browser game prototype built with plain HTML, CSS, 
 
 ## Current Status
 
-Phase 3 is complete. The project shell, responsive canvas layout, and first static rendering pass are in place, including a scale-aware doubles padel court, glowing line art, a gridded net, paddles, ball, score display, and ready overlay.
+Phase 3 is complete. The project shell, responsive canvas layout, and first static rendering pass are in place, including a scale-aware top-down doubles padel court, outward glass walls, glowing line art, a gridded net, paddles, ball, score display, and ready overlay.
 
 ## Project Structure
 

@@ -28,7 +28,7 @@ The player controls a paddle near the bottom of a vertically oriented padel cour
 - White foreground.
 - High-contrast glowing line art.
 - Pong-like minimalism.
-- Pseudo-3D top-down perspective.
+- Orthographic top-down court view.
 - Court is vertically arranged.
 - Center net is represented as a glowing gridded surface.
 - Glass walls are represented as continuous bright boundary lines.
@@ -36,10 +36,11 @@ The player controls a paddle near the bottom of a vertically oriented padel cour
 
 ## Court
 
-The court is drawn as a perspective-projected padel court:
+The court is drawn as an orthographic top-down padel court:
 
-- Far side appears slightly narrower.
-- Near side appears wider.
+- The playing surface keeps the correct 10 m by 20 m doubles-court ratio.
+- Court lines remain rectangular, as if the camera is directly above the field.
+- Glass walls are drawn outward from the court edges to create visual depth.
 - Central net crosses the court horizontally.
 - Side and back glass walls are continuous outlines.
 - Court service and center lines may be simplified if they improve readability.

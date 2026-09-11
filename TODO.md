@@ -26,7 +26,7 @@
 ## Phase 3 - Rendering
 
 - [x] Draw blue background.
-- [x] Draw perspective padel court.
+- [x] Draw orthographic top-down padel court.
 - [x] Draw continuous glass wall outlines.
 - [x] Draw center net as a glowing gridded surface.
 - [x] Draw simplified court markings.
