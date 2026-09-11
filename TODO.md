@@ -46,15 +46,15 @@
 
 ## Phase 5 - Core Physics
 
-- [ ] Represent ball position, velocity, and height.
-- [ ] Add game loop with fixed or normalized timestep.
-- [ ] Move ball each frame.
-- [ ] Add court bounce behavior.
-- [ ] Add paddle collision.
-- [ ] Add hit angle based on paddle contact point.
-- [ ] Add side glass collision.
-- [ ] Add back glass collision after bounce.
-- [ ] Add net crossing and net collision.
+- [x] Represent ball position, velocity, and height.
+- [x] Add game loop with fixed or normalized timestep.
+- [x] Move ball each frame.
+- [x] Add court bounce behavior.
+- [x] Add paddle collision.
+- [x] Add hit angle based on paddle contact point.
+- [x] Add side glass collision.
+- [x] Add back glass collision after bounce.
+- [x] Add net crossing and net collision.
 
 ## Phase 6 - Rules and Scoring
 

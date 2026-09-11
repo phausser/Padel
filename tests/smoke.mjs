@@ -41,6 +41,15 @@ assert.match(game, /clampPlayerPaddleX/, "game.js clamps the player paddle to pl
 assert.match(game, /PADDLE_SMOOTHING/, "game.js smooths player paddle input");
 assert.match(game, /addEventListener\("pointermove"/, "game.js listens for pointer movement");
 assert.match(game, /addEventListener\("pointerdown"/, "game.js listens for pointer drag starts");
+assert.match(game, /vz:/, "game.js represents ball height velocity");
+assert.match(game, /MAX_FRAME_DELTA/, "game.js caps game loop delta time");
+assert.match(game, /updateGame/, "game.js updates gameplay in an animation loop");
+assert.match(game, /updateBall/, "game.js moves the ball each frame");
+assert.match(game, /handleCourtBounce/, "game.js handles court bounce behavior");
+assert.match(game, /handlePaddleCollision/, "game.js handles paddle collision");
+assert.match(game, /handleSideGlassCollision/, "game.js handles side glass collision");
+assert.match(game, /handleBackGlassCollision/, "game.js handles back glass collision");
+assert.match(game, /handleNetCollision/, "game.js handles net collision");
 assert.match(game, /addEventListener\("resize"/, "game.js listens for resize events");
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 
