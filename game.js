@@ -11,6 +11,9 @@ const BACKGROUND_COLOR = "#1E8FD5";
 const WALL_DEPTH_RATIO = 0.115;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
+const PLAYER_PADDLE_WIDTH = 2.15;
+const PLAYER_MOBILE_PADDLE_WIDTH = 2.48;
+const AI_PADDLE_WIDTH = 1.9;
 const PADDLE_SMOOTHING = 0.35;
 const BALL_START_X = 5.35;
 const BALL_START_Y = 12.25;
@@ -24,7 +27,11 @@ const BALL_NET_HEIGHT = 0.42;
 const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
 const BALL_HEIGHT_SCREEN_SCALE = 0.56;
+const BALL_MAX_SIDE_SPEED = 5.4;
+const BALL_SPIN_ACCELERATION = 1.45;
+const BALL_SPIN_DECAY = 0.92;
 const PADDLE_REACH_HEIGHT = 6.25;
+const PADDLE_SPIN_TRANSFER = 0.34;
 const PADDLE_SHADOW_COLOR = "#0b4f78";
 const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
@@ -43,12 +50,14 @@ const renderState = {
   playerPaddle: {
     x: 5,
     y: PLAYER_PADDLE_Y,
-    width: 2.15
+    width: PLAYER_PADDLE_WIDTH,
+    vx: 0
   },
   aiPaddle: {
     x: 5,
     y: AI_PADDLE_Y,
-    width: 1.9
+    width: AI_PADDLE_WIDTH,
+    vx: 0
   },
   ball: {
     x: BALL_START_X,
@@ -57,6 +66,7 @@ const renderState = {
     vx: 0.74,
     vy: -6.6,
     vz: 3,
+    spin: 0,
     radius: BALL_RADIUS,
     hasCourtBounce: false,
     lastHitBy: "player"
@@ -111,6 +121,7 @@ function resizeCanvas() {
 
   context.setTransform(layout.viewport.dpr, 0, 0, layout.viewport.dpr, 0, 0);
   layout.court = getCourtBounds(layout.viewport.width, layout.viewport.height);
+  updateResponsivePaddles();
   drawShell();
 }
 
@@ -147,6 +158,19 @@ function getViewport() {
   return { width, height, dpr };
 }
 
+function updateResponsivePaddles() {
+  const isNarrowPortrait =
+    layout.viewport.width <= 480 && layout.viewport.height > layout.viewport.width;
+
+  renderState.playerPaddle.width = isNarrowPortrait
+    ? PLAYER_MOBILE_PADDLE_WIDTH
+    : PLAYER_PADDLE_WIDTH;
+  renderState.aiPaddle.width = AI_PADDLE_WIDTH;
+  inputState.targetX = clampPlayerPaddleX(inputState.targetX);
+  renderState.playerPaddle.x = clampPlayerPaddleX(renderState.playerPaddle.x);
+  renderState.aiPaddle.x = clampAiPaddleX(renderState.aiPaddle.x);
+}
+
 function queueResize() {
   if (pendingResizeFrame !== 0) {
     cancelAnimationFrame(pendingResizeFrame);
@@ -181,13 +205,15 @@ function updatePlayerPaddle() {
   }
 }
 
-function movePlayerPaddleTowardTarget() {
+function movePlayerPaddleTowardTarget(delta = 1 / 60) {
   const paddle = renderState.playerPaddle;
+  const previousX = paddle.x;
   const nextX = lerp(paddle.x, inputState.targetX, PADDLE_SMOOTHING);
 
   paddle.x = clampPlayerPaddleX(
     Math.abs(nextX - inputState.targetX) < 0.01 ? inputState.targetX : nextX
   );
+  paddle.vx = (paddle.x - previousX) / Math.max(delta, 1 / 120);
 }
 
 function startGame() {
@@ -219,6 +245,7 @@ function resetBall() {
     vx: 0.74,
     vy: -6.6,
     vz: 3,
+    spin: 0,
     hasCourtBounce: false,
     lastHitBy: "player"
   });
@@ -234,7 +261,7 @@ function updateGame(time) {
   const delta = Math.min(MAX_FRAME_DELTA, (time - gameState.lastTime) / 1000);
 
   gameState.lastTime = time;
-  movePlayerPaddleTowardTarget();
+  movePlayerPaddleTowardTarget(delta);
   if (gameState.status === "playing") {
     updateAiPaddle(delta);
     updateBall(delta);
@@ -251,6 +278,9 @@ function updateBall(delta) {
   const previousY = ball.y;
 
   ball.vz -= BALL_GRAVITY * delta;
+  ball.vx += ball.spin * BALL_SPIN_ACCELERATION * delta;
+  ball.vx = clamp(ball.vx, -BALL_MAX_SIDE_SPEED, BALL_MAX_SIDE_SPEED);
+  ball.spin *= BALL_SPIN_DECAY ** (delta * 60);
   ball.x += ball.vx * delta;
   ball.y += ball.vy * delta;
   ball.z += ball.vz * delta;
@@ -283,10 +313,12 @@ function updateAiPaddle(delta) {
   }
 
   const paddle = renderState.aiPaddle;
+  const previousX = paddle.x;
   const maxStep = AI_MAX_SPEED * delta;
   const nextX = moveToward(paddle.x, aiState.targetX, maxStep);
 
   paddle.x = clampAiPaddleX(nextX);
+  paddle.vx = (paddle.x - previousX) / Math.max(delta, 1 / 120);
 }
 
 function getAiTargetX(ball) {
@@ -411,15 +443,33 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   }
 
   const contact = clamp((ball.x - paddle.x) / halfWidth, -1, 1);
+  const contactDirection = getPaddleContactDirection(contact);
+  const spin = clamp(paddle.vx * PADDLE_SPIN_TRANSFER, -1.8, 1.8);
 
   ball.y = paddle.y + direction * (ball.radius + 0.06);
-  ball.vx = contact * 4.2;
-  ball.vy = direction * (6.7 + Math.abs(contact) * 1.25);
+  ball.vx = clamp(
+    contactDirection * 4.55 + spin * 0.72,
+    -BALL_MAX_SIDE_SPEED,
+    BALL_MAX_SIDE_SPEED
+  );
+  ball.vy = direction * (6.7 + Math.abs(contactDirection) * 1.25);
   ball.vz = BALL_PADDLE_LIFT;
+  ball.spin = spin;
   ball.hasCourtBounce = false;
   ball.lastHitBy = hitter;
   gameState.ballSide = hitter;
   gameState.bouncesOnSide = 0;
+}
+
+function getPaddleContactDirection(contact) {
+  const deadZone = 0.16;
+
+  if (Math.abs(contact) < deadZone) {
+    return 0;
+  }
+
+  const edgeAmount = (Math.abs(contact) - deadZone) / (1 - deadZone);
+  return Math.sign(contact) * edgeAmount ** 0.78;
 }
 
 function handleDeadBall(ball) {
@@ -613,17 +663,13 @@ function drawPaddle(paddle) {
   context.save();
   context.globalAlpha = 0.26;
   context.fillStyle = PADDLE_SHADOW_COLOR;
-  context.beginPath();
-  context.ellipse(
-    center.x,
-    center.y + paddleThickness * 0.42,
-    paddleWidth * 0.46,
-    paddleThickness * 0.62,
-    0,
-    0,
-    Math.PI * 2
+  context.filter = `blur(${Math.max(3, paddleThickness * 0.45)}px)`;
+  context.fillRect(
+    center.x - paddleWidth / 2,
+    center.y + paddleThickness * 0.08,
+    paddleWidth,
+    paddleThickness
   );
-  context.fill();
   context.restore();
 
   context.save();
@@ -647,6 +693,7 @@ function drawBall(ball) {
 
   context.save();
   context.globalAlpha = 0.24;
+  context.filter = `blur(${Math.max(2.5, radius * 0.55)}px)`;
   context.beginPath();
   context.ellipse(
     center.x,
@@ -676,16 +723,20 @@ function getHeightScreenOffset(heightMeters) {
 function drawScore() {
   const { width } = layout.viewport;
   const court = layout.court;
+  const scoreFontSize = Math.max(
+    16,
+    Math.min(28, court.width * 0.1, court.y * 0.85)
+  );
 
   context.save();
   applyGlow(10, 0.92);
-  context.font = `${Math.max(18, Math.min(34, court.width * 0.12))}px monospace`;
+  context.font = `${scoreFontSize}px monospace`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(
     `${renderState.score.ai}  ${renderState.score.player}`,
     width / 2,
-    court.y * 0.55
+    Math.max(scoreFontSize / 2 + 2, court.y * 0.5)
   );
   context.restore();
 }
@@ -877,5 +928,6 @@ canvas.addEventListener("pointercancel", handlePointerEnd);
 canvas.addEventListener("touchstart", preventGameGesture, { passive: false });
 canvas.addEventListener("touchmove", preventGameGesture, { passive: false });
 canvas.addEventListener("contextmenu", preventGameGesture);
+window.addEventListener("gesturestart", preventGameGesture, { passive: false });
 
 resizeCanvas();

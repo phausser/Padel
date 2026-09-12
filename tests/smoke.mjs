@@ -47,6 +47,8 @@ assert.match(game, /updateGame/, "game.js updates gameplay in an animation loop"
 assert.match(game, /updateBall/, "game.js moves the ball each frame");
 assert.match(game, /handleCourtBounce/, "game.js handles court bounce behavior");
 assert.match(game, /handlePaddleCollision/, "game.js handles paddle collision");
+assert.match(game, /getPaddleContactDirection/, "game.js steers paddle hits by contact zone");
+assert.match(game, /PADDLE_SPIN_TRANSFER/, "game.js transfers paddle movement into ball spin");
 assert.match(game, /handleSideGlassCollision/, "game.js handles side glass collision");
 assert.match(game, /handleBackGlassCollision/, "game.js handles back glass collision");
 assert.match(game, /handleNetCollision/, "game.js handles net collision");

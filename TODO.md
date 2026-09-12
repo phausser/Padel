@@ -77,14 +77,15 @@
 
 ## Phase 8 - Mobile Polish
 
-- [ ] Test in narrow portrait viewport.
-- [ ] Increase touch comfort if needed.
-- [ ] Ensure text does not overlap the court.
-- [ ] Ensure paddle remains easy to control with a finger.
-- [ ] Prevent browser gestures from interfering with play where possible.
+- [x] Test in narrow portrait viewport.
+- [x] Increase touch comfort if needed.
+- [x] Ensure text does not overlap the court.
+- [x] Ensure paddle remains easy to control with a finger.
+- [x] Prevent browser gestures from interfering with play where possible.
 
 ## Phase 9 - Game Feel
 
+- [x] Add paddle movement spin.
 - [ ] Add glow effects consistently.
 - [ ] Add small hit flash or particle effect.
 - [ ] Add ball trail.
