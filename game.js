@@ -35,6 +35,7 @@ const BALL_MAX_RALLY_SPEED_BONUS = 2.2;
 const BALL_SPIN_ACCELERATION = 1.45;
 const BALL_SPIN_DECAY = 0.92;
 const PADDLE_REACH_HEIGHT = 6.25;
+const PADDLE_COLLISION_DEPTH = 0.42;
 const PADDLE_SPIN_TRANSFER = 0.34;
 const PADDLE_SHADOW_COLOR = "#0b4f78";
 const SHADOW_HEIGHT_OFFSET_SCALE = 0.3;
@@ -314,6 +315,7 @@ function updateGame(time) {
 
 function updateBall(delta) {
   const ball = renderState.ball;
+  const previousX = ball.x;
   const previousY = ball.y;
 
   ball.vz -= BALL_GRAVITY * delta;
@@ -337,8 +339,8 @@ function updateBall(delta) {
     return;
   }
 
-  handlePaddleCollision(ball, renderState.playerPaddle, -1, previousY, "player");
-  handlePaddleCollision(ball, renderState.aiPaddle, 1, previousY, "ai");
+  handlePaddleCollision(ball, renderState.playerPaddle, -1, previousX, previousY, "player");
+  handlePaddleCollision(ball, renderState.aiPaddle, 1, previousX, previousY, "ai");
   recordBallTrail(ball);
   handleDeadBall(ball);
 }
@@ -529,26 +531,33 @@ function handleNetCollision(ball, previousY) {
   awardPoint(getOpponentSide(ball.lastHitBy), "NET");
 }
 
-function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
+function handlePaddleCollision(ball, paddle, direction, previousX, previousY, hitter) {
+  const pathMinY = Math.min(previousY, ball.y) - ball.radius;
+  const pathMaxY = Math.max(previousY, ball.y) + ball.radius;
+  const paddleBand = PADDLE_COLLISION_DEPTH + ball.radius;
   const crossedPaddle =
-    direction < 0
-      ? previousY < paddle.y && ball.y >= paddle.y
-      : previousY > paddle.y && ball.y <= paddle.y;
+    paddle.y >= pathMinY - paddleBand && paddle.y <= pathMaxY + paddleBand;
+  const ballMovingIntoPaddle = ball.vy * direction < 0;
+  const impactAmount =
+    Math.abs(ball.y - previousY) < 0.001
+      ? 1
+      : clamp((paddle.y - previousY) / (ball.y - previousY), 0, 1);
+  const impactX = lerp(previousX, ball.x, impactAmount);
   const halfWidth = paddle.width / 2;
-  const withinPaddle = Math.abs(ball.x - paddle.x) <= halfWidth + ball.radius;
-  const hittableHeight = ball.z <= PADDLE_REACH_HEIGHT;
+  const withinPaddle = Math.abs(impactX - paddle.x) <= halfWidth + ball.radius;
 
-  if (!crossedPaddle || !withinPaddle || !hittableHeight) {
+  if (!crossedPaddle || !withinPaddle || !ballMovingIntoPaddle) {
     return;
   }
 
-  const contact = clamp((ball.x - paddle.x) / halfWidth, -1, 1);
+  const contact = clamp((impactX - paddle.x) / halfWidth, -1, 1);
   const contactDirection = getPaddleContactDirection(contact);
   const spin = clamp(paddle.vx * PADDLE_SPIN_TRANSFER, -1.8, 1.8);
   const rallySpeedBonus = getRallySpeedBonus();
   const strokeSpeedBonus = getPaddleStrokeSpeedBonus(paddle, direction);
 
-  ball.y = paddle.y + direction * (ball.radius + 0.06);
+  ball.x = impactX;
+  ball.y = paddle.y + direction * (paddleBand + 0.03);
   ball.vx = clamp(
     contactDirection * (4.55 + rallySpeedBonus * 0.22) + spin * 0.72,
     -BALL_MAX_SIDE_SPEED,
