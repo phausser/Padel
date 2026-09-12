@@ -8,27 +8,30 @@ const COURT_ASPECT_RATIO = COURT_WIDTH_METERS / COURT_LENGTH_METERS;
 const MIN_COURT_MARGIN = 30;
 const MAX_DEVICE_PIXEL_RATIO = 3;
 const BACKGROUND_COLOR = "#1E8FD5";
-const WALL_DEPTH_RATIO = 0.075;
+const WALL_DEPTH_RATIO = 0.115;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
 const PADDLE_SMOOTHING = 0.35;
 const BALL_START_X = 5.35;
 const BALL_START_Y = 12.25;
 const BALL_RADIUS = 0.16;
-const BALL_GRAVITY = 8.8;
+const BALL_GRAVITY = 5.8;
 const BALL_FLOOR_RESTITUTION = 0.72;
 const BALL_FLOOR_FRICTION = 0.985;
-const BALL_PADDLE_LIFT = 5.6;
+const BALL_PADDLE_LIFT = 7.6;
 const BALL_MIN_BOUNCE_VELOCITY = 1.25;
 const BALL_NET_HEIGHT = 0.42;
 const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
+const BALL_HEIGHT_SCREEN_SCALE = 0.56;
+const PADDLE_REACH_HEIGHT = 6.25;
+const PADDLE_SHADOW_COLOR = "#0b4f78";
 const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
 const WINNING_SCORE = 7;
 const WIN_BY = 2;
-const AI_MAX_SPEED = 4.7;
-const AI_REACTION_INTERVAL = 0.18;
+const AI_MAX_SPEED = 6.1;
+const AI_REACTION_INTERVAL = 0.14;
 const AI_CENTERING_SPEED = 1.25;
 const AI_PREDICTION_ERROR = 0.42;
 
@@ -50,10 +53,10 @@ const renderState = {
   ball: {
     x: BALL_START_X,
     y: BALL_START_Y,
-    z: 0.8,
-    vx: 0.58,
-    vy: -5.2,
-    vz: 2.1,
+    z: 1.15,
+    vx: 0.74,
+    vy: -6.6,
+    vz: 3,
     radius: BALL_RADIUS,
     hasCourtBounce: false,
     lastHitBy: "player"
@@ -212,10 +215,10 @@ function resetBall() {
   Object.assign(renderState.ball, {
     x: BALL_START_X,
     y: BALL_START_Y,
-    z: 0.8,
-    vx: 0.58,
-    vy: -5.2,
-    vz: 2.1,
+    z: 1.15,
+    vx: 0.74,
+    vy: -6.6,
+    vz: 3,
     hasCourtBounce: false,
     lastHitBy: "player"
   });
@@ -296,7 +299,7 @@ function getAiTargetX(ball) {
   }
 
   const predictedX = predictBallXAtY(ball, AI_PADDLE_Y);
-  const pressure = clamp(Math.abs(ball.vy) / 7, 0, 1);
+  const pressure = clamp(Math.abs(ball.vy) / 8.4, 0, 1);
 
   aiState.mistakeOffset = lerp(
     aiState.mistakeOffset,
@@ -401,7 +404,7 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
       : previousY > paddle.y && ball.y <= paddle.y;
   const halfWidth = paddle.width / 2;
   const withinPaddle = Math.abs(ball.x - paddle.x) <= halfWidth + ball.radius;
-  const hittableHeight = ball.z <= 1.1;
+  const hittableHeight = ball.z <= PADDLE_REACH_HEIGHT;
 
   if (!crossedPaddle || !withinPaddle || !hittableHeight) {
     return;
@@ -410,8 +413,8 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   const contact = clamp((ball.x - paddle.x) / halfWidth, -1, 1);
 
   ball.y = paddle.y + direction * (ball.radius + 0.06);
-  ball.vx = contact * 3.2;
-  ball.vy = direction * (5.2 + Math.abs(contact) * 0.9);
+  ball.vx = contact * 4.2;
+  ball.vy = direction * (6.7 + Math.abs(contact) * 1.25);
   ball.vz = BALL_PADDLE_LIFT;
   ball.hasCourtBounce = false;
   ball.lastHitBy = hitter;
@@ -597,23 +600,48 @@ function drawNet() {
 
 function drawPaddle(paddle) {
   const halfWidth = paddle.width / 2;
+  const center = projectCourtPoint(paddle.x, paddle.y);
   const left = projectCourtPoint(paddle.x - halfWidth, paddle.y);
   const right = projectCourtPoint(paddle.x + halfWidth, paddle.y);
+  const ballHeight = Math.max(0, renderState.ball.z);
+  const heightOffset = getHeightScreenOffset(ballHeight);
+  const paddleWidth = Math.abs(right.x - left.x);
+  const paddleThickness = Math.max(7, layout.court.width * 0.028);
+  const screenX = center.x - paddleWidth / 2;
+  const screenY = center.y - heightOffset - paddleThickness / 2;
+
+  context.save();
+  context.globalAlpha = 0.26;
+  context.fillStyle = PADDLE_SHADOW_COLOR;
+  context.beginPath();
+  context.ellipse(
+    center.x,
+    center.y + paddleThickness * 0.42,
+    paddleWidth * 0.46,
+    paddleThickness * 0.62,
+    0,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
+  context.restore();
 
   context.save();
   applyGlow(18, 1);
-  context.lineCap = "round";
-  context.lineWidth = Math.max(5, layout.court.width * 0.024);
-  context.beginPath();
-  context.moveTo(left.x, left.y);
-  context.lineTo(right.x, right.y);
-  context.stroke();
+  context.fillRect(screenX, screenY, paddleWidth, paddleThickness);
+  context.globalAlpha = 0.55;
+  context.fillRect(
+    screenX + paddleThickness * 0.22,
+    screenY + paddleThickness * 0.22,
+    paddleWidth - paddleThickness * 0.44,
+    Math.max(1.5, paddleThickness * 0.18)
+  );
   context.restore();
 }
 
 function drawBall(ball) {
   const center = projectCourtPoint(ball.x, ball.y);
-  const heightOffset = getCourtMeterScale() * ball.z * 0.42;
+  const heightOffset = getHeightScreenOffset(ball.z);
   const edge = projectCourtPoint(ball.x + ball.radius, ball.y);
   const radius = Math.max(4, Math.abs(edge.x - center.x) * (1 + ball.z * 0.08));
 
@@ -639,6 +667,10 @@ function drawBall(ball) {
   context.arc(center.x, center.y - heightOffset, radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
+}
+
+function getHeightScreenOffset(heightMeters) {
+  return getCourtMeterScale() * heightMeters * BALL_HEIGHT_SCREEN_SCALE;
 }
 
 function drawScore() {
