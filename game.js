@@ -30,7 +30,6 @@ const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
 const BALL_AIR_WALL_RESTITUTION = 0.42;
 const BALL_PADDLE_STROKE_ACCELERATION = 0.58;
-const BALL_HEIGHT_SCREEN_SCALE = 0.56;
 const BALL_MAX_SIDE_SPEED = 5.4;
 const BALL_SPEED_RAMP_PER_HIT = 0.22;
 const BALL_MAX_RALLY_SPEED_BONUS = 2.2;
@@ -837,17 +836,16 @@ function drawPaddle(paddle) {
 function drawBallTrail() {
   renderState.ballTrail.forEach((trailPoint) => {
     const center = projectCourtPoint(trailPoint.x, trailPoint.y);
-    const heightOffset = getHeightScreenOffset(trailPoint.z);
     const edge = projectCourtPoint(trailPoint.x + trailPoint.radius, trailPoint.y);
     const progress = trailPoint.age / trailPoint.life;
-    const radius = Math.max(3, Math.abs(edge.x - center.x) * (1 + trailPoint.z * 0.06));
+    const radius = Math.max(3, Math.abs(edge.x - center.x));
 
     context.save();
     applyGlow(16, (1 - progress) * 0.34);
     context.beginPath();
     context.arc(
       center.x,
-      center.y - heightOffset,
+      center.y,
       radius * (1.45 - progress * 0.35),
       0,
       Math.PI * 2
@@ -859,19 +857,21 @@ function drawBallTrail() {
 
 function drawBall(ball) {
   const center = projectCourtPoint(ball.x, ball.y);
-  const heightOffset = getHeightScreenOffset(ball.z);
   const edge = projectCourtPoint(ball.x + ball.radius, ball.y);
-  const radius = Math.max(4, Math.abs(edge.x - center.x) * (1 + ball.z * 0.08));
+  const radius = Math.max(4, Math.abs(edge.x - center.x));
+  const heightRatio = clamp(ball.z / PADDLE_REACH_HEIGHT, 0, 1);
+  const shadowBlur = Math.max(2.5, radius * (0.45 + heightRatio * 1.8));
+  const shadowScale = 1.05 + heightRatio * 1.35;
 
   context.save();
-  context.globalAlpha = 0.24;
-  context.filter = `blur(${Math.max(2.5, radius * 0.55)}px)`;
+  context.globalAlpha = 0.28 - heightRatio * 0.16;
+  context.filter = `blur(${shadowBlur}px)`;
   context.beginPath();
   context.ellipse(
     center.x,
-    center.y + radius * 0.35,
-    radius * 1.2,
-    radius * 0.42,
+    center.y,
+    radius * shadowScale,
+    radius * (0.48 + heightRatio * 0.32),
     0,
     0,
     Math.PI * 2
@@ -883,12 +883,12 @@ function drawBall(ball) {
   context.save();
   applyGlow(24, 0.82);
   context.beginPath();
-  context.arc(center.x, center.y - heightOffset, radius * 1.14, 0, Math.PI * 2);
+  context.arc(center.x, center.y, radius * 1.14, 0, Math.PI * 2);
   context.fill();
   context.shadowBlur = 5;
   context.globalAlpha = 1;
   context.beginPath();
-  context.arc(center.x, center.y - heightOffset, radius, 0, Math.PI * 2);
+  context.arc(center.x, center.y, radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
 }
@@ -912,7 +912,7 @@ function drawHitFlash(effect) {
   applyGlow(18, (1 - progress) * 0.62 * effect.intensity);
   context.lineWidth = Math.max(1.2, getCourtMeterScale() * 0.035);
   context.beginPath();
-  context.arc(center.x, center.y - getHeightScreenOffset(effect.z), radius, 0, Math.PI * 2);
+  context.arc(center.x, center.y, radius, 0, Math.PI * 2);
   context.stroke();
   context.restore();
 }
@@ -925,13 +925,9 @@ function drawHitParticle(effect) {
   context.save();
   applyGlow(12, (1 - progress) * 0.72 * effect.intensity);
   context.beginPath();
-  context.arc(center.x, center.y - getHeightScreenOffset(effect.z), radius, 0, Math.PI * 2);
+  context.arc(center.x, center.y, radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
-}
-
-function getHeightScreenOffset(heightMeters) {
-  return getCourtMeterScale() * heightMeters * BALL_HEIGHT_SCREEN_SCALE;
 }
 
 function drawScore() {
