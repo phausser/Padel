@@ -105,7 +105,7 @@
 
 ## Later Enhancements
 
-- [ ] Add sound effects.
+- [x] Add sound effects.
 - [ ] Add real padel scoring.
 - [ ] Add serve mechanic.
 - [ ] Add difficulty selector.

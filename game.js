@@ -43,6 +43,7 @@ const BALL_TRAIL_LIFETIME = 0.28;
 const HIT_FLASH_LIFETIME = 0.24;
 const HIT_PARTICLE_LIFETIME = 0.36;
 const HIT_PARTICLE_COUNT = 8;
+const SOUND_MASTER_VOLUME = 0.18;
 const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
 const WINNING_SCORE = 7;
@@ -109,6 +110,12 @@ const gameState = {
   ballSide: "player",
   bouncesOnSide: 0,
   rallyHits: 0
+};
+
+const audioState = {
+  context: null,
+  masterGain: null,
+  unlocked: false
 };
 
 const layout = {
@@ -454,6 +461,7 @@ function handleCourtBounce(ball) {
   ball.vy *= BALL_FLOOR_FRICTION;
   ball.vz = Math.max(BALL_MIN_BOUNCE_VELOCITY, Math.abs(ball.vz) * BALL_FLOOR_RESTITUTION);
   addHitFlash(ball.x, ball.y, 0, 0.72);
+  playSound("bounce", clamp(Math.abs(ball.vz) / 8, 0.35, 1));
 
   if (gameState.bouncesOnSide >= 2) {
     awardPoint(getOpponentSide(gameState.ballSide), "DOUBLE BOUNCE");
@@ -470,11 +478,13 @@ function handleSideGlassCollision(ball) {
     ball.vx = Math.abs(ball.vx) * restitution;
     ball.spin *= 0.42;
     addHitFlash(ball.x, ball.y, ball.z, 0.58);
+    playSound("wall", clamp(Math.abs(ball.vx) / 5, 0.32, 1));
   } else if (ball.x > maxX) {
     ball.x = maxX;
     ball.vx = -Math.abs(ball.vx) * restitution;
     ball.spin *= 0.42;
     addHitFlash(ball.x, ball.y, ball.z, 0.58);
+    playSound("wall", clamp(Math.abs(ball.vx) / 5, 0.32, 1));
   }
 }
 
@@ -488,11 +498,13 @@ function handleBackGlassCollision(ball) {
     ball.vy = Math.abs(ball.vy) * restitution;
     ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
+    playSound("wall", clamp(Math.abs(ball.vy) / 7, 0.36, 1));
   } else if (ball.y > maxY) {
     ball.y = maxY;
     ball.vy = -Math.abs(ball.vy) * restitution;
     ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
+    playSound("wall", clamp(Math.abs(ball.vy) / 7, 0.36, 1));
   }
 }
 
@@ -513,6 +525,7 @@ function handleNetCollision(ball, previousY) {
   ball.vx *= 0.58;
   ball.vz = Math.max(0.68, Math.abs(ball.vz) * 0.36);
   addHitFlash(ball.x, ball.y, BALL_NET_HEIGHT, 0.9);
+  playSound("net", 0.9);
   awardPoint(getOpponentSide(ball.lastHitBy), "NET");
 }
 
@@ -553,6 +566,7 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   gameState.rallyHits += 1;
   addHitFlash(ball.x, paddle.y, Math.max(0.5, ball.z), 1);
   addHitParticles(ball.x, paddle.y, Math.max(0.5, ball.z), direction, contact);
+  playSound("paddle", clamp(Math.abs(ball.vy) / 9, 0.45, 1));
 }
 
 function getRallySpeedBonus() {
@@ -655,6 +669,7 @@ function awardPoint(winner, reason) {
 
   renderState.score[winner] += 1;
   gameState.message = winner === "player" ? "POINT" : "AI POINT";
+  playSound(winner === "player" ? "point" : "miss", 0.9);
 
   if (reason === "NET") {
     gameState.message = winner === "player" ? "NET - POINT" : "NET - AI POINT";
@@ -675,6 +690,93 @@ function hasWinner() {
   const scoreDifference = Math.abs(renderState.score.player - renderState.score.ai);
 
   return highScore >= WINNING_SCORE && scoreDifference >= WIN_BY;
+}
+
+function unlockAudio() {
+  if (audioState.unlocked) {
+    return;
+  }
+
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    audioState.unlocked = true;
+    return;
+  }
+
+  if (!audioState.context) {
+    audioState.context = new AudioContextConstructor();
+    audioState.masterGain = audioState.context.createGain();
+    audioState.masterGain.gain.value = SOUND_MASTER_VOLUME;
+    audioState.masterGain.connect(audioState.context.destination);
+  }
+
+  audioState.context.resume?.();
+  audioState.unlocked = true;
+  playSound("start", 0.45);
+}
+
+function playSound(name, intensity = 1) {
+  const audioContext = audioState.context;
+  if (!audioState.unlocked || !audioContext || !audioState.masterGain) {
+    return;
+  }
+
+  if (audioContext.state === "suspended") {
+    audioContext.resume?.();
+  }
+
+  const sound = getSoundCue(name, intensity);
+  if (!sound) {
+    return;
+  }
+
+  const now = audioContext.currentTime;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.type = sound.type;
+  oscillator.frequency.setValueAtTime(sound.frequency, now);
+  oscillator.frequency.exponentialRampToValueAtTime(sound.endFrequency, now + sound.duration);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(sound.volume, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + sound.duration);
+  oscillator.connect(gain);
+  gain.connect(audioState.masterGain);
+  oscillator.start(now);
+  oscillator.stop(now + sound.duration + 0.02);
+}
+
+function getSoundCue(name, intensity) {
+  const amount = clamp(intensity, 0, 1);
+  const cues = {
+    start: { type: "sine", frequency: 520, endFrequency: 780, duration: 0.08, volume: 0.24 },
+    paddle: {
+      type: "triangle",
+      frequency: 360 + amount * 170,
+      endFrequency: 760 + amount * 240,
+      duration: 0.075,
+      volume: 0.34 + amount * 0.2
+    },
+    bounce: {
+      type: "sine",
+      frequency: 250 + amount * 70,
+      endFrequency: 120 + amount * 50,
+      duration: 0.055,
+      volume: 0.2 + amount * 0.12
+    },
+    wall: {
+      type: "square",
+      frequency: 170 + amount * 55,
+      endFrequency: 90 + amount * 30,
+      duration: 0.045,
+      volume: 0.14 + amount * 0.1
+    },
+    net: { type: "sawtooth", frequency: 130, endFrequency: 70, duration: 0.12, volume: 0.22 },
+    point: { type: "sine", frequency: 640, endFrequency: 980, duration: 0.16, volume: 0.28 },
+    miss: { type: "triangle", frequency: 220, endFrequency: 120, duration: 0.18, volume: 0.2 }
+  };
+
+  return cues[name];
 }
 
 function drawShell() {
@@ -1141,6 +1243,7 @@ function handlePointerInput(event) {
 
 function handlePointerDown(event) {
   event.preventDefault();
+  unlockAudio();
   inputState.activePointerId = event.pointerId;
   canvas.setPointerCapture?.(event.pointerId);
   handlePointerInput(event);
