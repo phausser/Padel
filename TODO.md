@@ -95,13 +95,13 @@
 
 ## Phase 10 - Verification
 
-- [ ] Run locally in a browser.
-- [ ] Verify desktop controls.
-- [ ] Verify touch controls with mobile viewport.
-- [ ] Verify canvas is nonblank after load.
-- [ ] Verify scoring works.
-- [ ] Verify game can restart after game over.
-- [ ] Check that layout has no overlapping text on mobile.
+- [x] Run locally in a browser.
+- [x] Verify desktop controls.
+- [x] Verify touch controls with mobile viewport.
+- [x] Verify canvas is nonblank after load.
+- [x] Verify scoring works.
+- [x] Verify game can restart after game over.
+- [x] Check that layout has no overlapping text on mobile.
 
 ## Later Enhancements
 

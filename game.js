@@ -11,8 +11,7 @@ const BACKGROUND_COLOR = "#1E8FD5";
 const WALL_DEPTH_RATIO = 0.115;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
-const PLAYER_PADDLE_Y_RANGE = 0.95;
-const AI_PADDLE_Y_RANGE = 0.5;
+const PADDLE_HALF_COURT_MARGIN = 0.55;
 const PLAYER_PADDLE_WIDTH = 2.2;
 const PLAYER_MOBILE_PADDLE_WIDTH = 2.58;
 const AI_PADDLE_WIDTH = 1.95;
@@ -38,6 +37,7 @@ const BALL_SPIN_DECAY = 0.92;
 const PADDLE_REACH_HEIGHT = 6.25;
 const PADDLE_SPIN_TRANSFER = 0.34;
 const PADDLE_SHADOW_COLOR = "#0b4f78";
+const SHADOW_HEIGHT_OFFSET_SCALE = 0.3;
 const BALL_TRAIL_MAX_POINTS = 12;
 const BALL_TRAIL_LIFETIME = 0.28;
 const HIT_FLASH_LIFETIME = 0.24;
@@ -391,8 +391,8 @@ function updateAiPaddle(delta) {
   const previousY = paddle.y;
   const maxStep = AI_MAX_SPEED * delta;
   const nextX = moveToward(paddle.x, aiState.targetX, maxStep);
-  const targetY = ball.vy < 0 ? AI_PADDLE_Y + AI_PADDLE_Y_RANGE * 0.45 : AI_PADDLE_Y;
-  const nextY = moveToward(paddle.y, targetY, maxStep * 0.42);
+  const targetY = ball.vy < 0 ? clampAiPaddleY(ball.y + 0.45) : AI_PADDLE_Y;
+  const nextY = moveToward(paddle.y, targetY, maxStep * 0.46);
 
   paddle.x = clampAiPaddleX(nextX);
   paddle.y = clampAiPaddleY(nextY);
@@ -619,8 +619,8 @@ function getPaddleContactDirection(contact) {
 function handleDeadBall(ball) {
   const tooSlow =
     Math.hypot(ball.vx, ball.vy) < 0.55 && ball.z < 0.16 && Math.abs(ball.vz) < 1.35;
-  const behindPlayer = ball.y > PLAYER_PADDLE_Y + 1.15;
-  const behindAi = ball.y < AI_PADDLE_Y - 1.15;
+  const behindPlayer = ball.y > renderState.playerPaddle.y + 1.15;
+  const behindAi = ball.y < renderState.aiPaddle.y - 1.15;
 
   if (behindPlayer) {
     awardPoint("ai", "OUT");
@@ -803,15 +803,15 @@ function drawPaddle(paddle) {
   const paddleThickness = Math.max(7, layout.court.width * 0.028);
   const screenX = center.x - paddleWidth / 2;
   const screenY = center.y - paddleThickness / 2;
-  const shadowOffset = Math.max(5, paddleThickness * 0.58);
+  const shadowOffset = getHeightShadowOffset(getPaddleRenderHeight());
 
   context.save();
   context.globalAlpha = 0.26;
   context.fillStyle = PADDLE_SHADOW_COLOR;
   context.filter = `blur(${Math.max(3, paddleThickness * 0.45)}px)`;
   context.fillRect(
-    center.x - paddleWidth / 2,
-    center.y + shadowOffset,
+    center.x - paddleWidth / 2 + shadowOffset.x,
+    center.y - paddleThickness * 0.34 + shadowOffset.y,
     paddleWidth,
     Math.max(3, paddleThickness * 0.68)
   );
@@ -862,14 +862,15 @@ function drawBall(ball) {
   const heightRatio = clamp(ball.z / PADDLE_REACH_HEIGHT, 0, 1);
   const shadowBlur = Math.max(2.5, radius * (0.45 + heightRatio * 1.8));
   const shadowScale = 1.05 + heightRatio * 1.35;
+  const shadowOffset = getHeightShadowOffset(ball.z);
 
   context.save();
   context.globalAlpha = 0.28 - heightRatio * 0.16;
   context.filter = `blur(${shadowBlur}px)`;
   context.beginPath();
   context.ellipse(
-    center.x,
-    center.y,
+    center.x + shadowOffset.x,
+    center.y + shadowOffset.y,
     radius * shadowScale,
     radius * (0.48 + heightRatio * 0.32),
     0,
@@ -891,6 +892,10 @@ function drawBall(ball) {
   context.arc(center.x, center.y, radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
+}
+
+function getPaddleRenderHeight() {
+  return clamp(renderState.ball.z, 0, PADDLE_REACH_HEIGHT);
 }
 
 function drawHitEffects() {
@@ -1039,6 +1044,15 @@ function getCourtMeterScale() {
   return layout.court.height / COURT_LENGTH_METERS;
 }
 
+function getHeightShadowOffset(heightMeters) {
+  const offset = getCourtMeterScale() * Math.max(0, heightMeters) * SHADOW_HEIGHT_OFFSET_SCALE;
+
+  return {
+    x: offset,
+    y: offset
+  };
+}
+
 function screenToCourtPoint(screenX, screenY) {
   const court = layout.court;
 
@@ -1057,8 +1071,8 @@ function clampPlayerPaddleX(xMeters) {
 function clampPlayerPaddleY(yMeters) {
   return clamp(
     yMeters,
-    PLAYER_PADDLE_Y - PLAYER_PADDLE_Y_RANGE * 0.72,
-    PLAYER_PADDLE_Y + PLAYER_PADDLE_Y_RANGE * 0.48
+    COURT_LENGTH_METERS / 2 + PADDLE_HALF_COURT_MARGIN,
+    COURT_LENGTH_METERS - PADDLE_HALF_COURT_MARGIN
   );
 }
 
@@ -1071,8 +1085,8 @@ function clampAiPaddleX(xMeters) {
 function clampAiPaddleY(yMeters) {
   return clamp(
     yMeters,
-    AI_PADDLE_Y - AI_PADDLE_Y_RANGE * 0.48,
-    AI_PADDLE_Y + AI_PADDLE_Y_RANGE * 0.72
+    PADDLE_HALF_COURT_MARGIN,
+    COURT_LENGTH_METERS / 2 - PADDLE_HALF_COURT_MARGIN
   );
 }
 
