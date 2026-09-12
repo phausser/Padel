@@ -11,9 +11,9 @@ const BACKGROUND_COLOR = "#1E8FD5";
 const WALL_DEPTH_RATIO = 0.115;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
-const PLAYER_PADDLE_WIDTH = 2.15;
-const PLAYER_MOBILE_PADDLE_WIDTH = 2.48;
-const AI_PADDLE_WIDTH = 1.9;
+const PLAYER_PADDLE_WIDTH = 2.2;
+const PLAYER_MOBILE_PADDLE_WIDTH = 2.58;
+const AI_PADDLE_WIDTH = 1.95;
 const PADDLE_SMOOTHING = 0.35;
 const BALL_START_X = 5.35;
 const BALL_START_Y = 12.25;
@@ -28,16 +28,23 @@ const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
 const BALL_HEIGHT_SCREEN_SCALE = 0.56;
 const BALL_MAX_SIDE_SPEED = 5.4;
+const BALL_SPEED_RAMP_PER_HIT = 0.22;
+const BALL_MAX_RALLY_SPEED_BONUS = 2.2;
 const BALL_SPIN_ACCELERATION = 1.45;
 const BALL_SPIN_DECAY = 0.92;
 const PADDLE_REACH_HEIGHT = 6.25;
 const PADDLE_SPIN_TRANSFER = 0.34;
 const PADDLE_SHADOW_COLOR = "#0b4f78";
+const BALL_TRAIL_MAX_POINTS = 12;
+const BALL_TRAIL_LIFETIME = 0.28;
+const HIT_FLASH_LIFETIME = 0.24;
+const HIT_PARTICLE_LIFETIME = 0.36;
+const HIT_PARTICLE_COUNT = 8;
 const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
 const WINNING_SCORE = 7;
 const WIN_BY = 2;
-const AI_MAX_SPEED = 6.1;
+const AI_MAX_SPEED = 6.25;
 const AI_REACTION_INTERVAL = 0.14;
 const AI_CENTERING_SPEED = 1.25;
 const AI_PREDICTION_ERROR = 0.42;
@@ -70,7 +77,9 @@ const renderState = {
     radius: BALL_RADIUS,
     hasCourtBounce: false,
     lastHitBy: "player"
-  }
+  },
+  ballTrail: [],
+  hitEffects: []
 };
 
 const inputState = {
@@ -92,7 +101,8 @@ const gameState = {
   pointResumeTime: 0,
   message: "TAP / CLICK",
   ballSide: "player",
-  bouncesOnSide: 0
+  bouncesOnSide: 0,
+  rallyHits: 0
 };
 
 const layout = {
@@ -252,6 +262,9 @@ function resetBall() {
   gameState.message = "";
   gameState.ballSide = getBallSide(renderState.ball.y);
   gameState.bouncesOnSide = 0;
+  gameState.rallyHits = 0;
+  renderState.ballTrail = [];
+  renderState.hitEffects = [];
   aiState.targetX = renderState.aiPaddle.x;
   aiState.reactionTimer = 0;
   aiState.mistakeOffset = 0;
@@ -269,6 +282,7 @@ function updateGame(time) {
     gameState.status = "playing";
     resetBall();
   }
+  updateVisualEffects(delta);
   drawShell();
   gameState.animationFrame = requestAnimationFrame(updateGame);
 }
@@ -300,7 +314,49 @@ function updateBall(delta) {
 
   handlePaddleCollision(ball, renderState.playerPaddle, -1, previousY, "player");
   handlePaddleCollision(ball, renderState.aiPaddle, 1, previousY, "ai");
+  recordBallTrail(ball);
   handleDeadBall(ball);
+}
+
+function updateVisualEffects(delta) {
+  renderState.ballTrail.forEach((trailPoint) => {
+    trailPoint.age += delta;
+  });
+  renderState.hitEffects.forEach((effect) => {
+    effect.age += delta;
+    effect.x += effect.vx * delta;
+    effect.y += effect.vy * delta;
+    effect.z = Math.max(0, effect.z + effect.vz * delta);
+    effect.vz -= BALL_GRAVITY * delta * 0.34;
+  });
+
+  renderState.ballTrail = renderState.ballTrail.filter(
+    (trailPoint) => trailPoint.age < trailPoint.life
+  );
+  renderState.hitEffects = renderState.hitEffects.filter((effect) => effect.age < effect.life);
+}
+
+function recordBallTrail(ball) {
+  const previousPoint = renderState.ballTrail[renderState.ballTrail.length - 1];
+  const hasMovedEnough =
+    !previousPoint || Math.hypot(ball.x - previousPoint.x, ball.y - previousPoint.y) > 0.18;
+
+  if (!hasMovedEnough) {
+    return;
+  }
+
+  renderState.ballTrail.push({
+    x: ball.x,
+    y: ball.y,
+    z: ball.z,
+    radius: ball.radius,
+    age: 0,
+    life: BALL_TRAIL_LIFETIME
+  });
+
+  if (renderState.ballTrail.length > BALL_TRAIL_MAX_POINTS) {
+    renderState.ballTrail.shift();
+  }
 }
 
 function updateAiPaddle(delta) {
@@ -374,6 +430,7 @@ function handleCourtBounce(ball) {
   ball.vx *= BALL_FLOOR_FRICTION;
   ball.vy *= BALL_FLOOR_FRICTION;
   ball.vz = Math.max(BALL_MIN_BOUNCE_VELOCITY, Math.abs(ball.vz) * BALL_FLOOR_RESTITUTION);
+  addHitFlash(ball.x, ball.y, 0, 0.72);
 
   if (gameState.bouncesOnSide >= 2) {
     awardPoint(getOpponentSide(gameState.ballSide), "DOUBLE BOUNCE");
@@ -391,9 +448,11 @@ function handleSideGlassCollision(ball) {
   if (ball.x < minX) {
     ball.x = minX;
     ball.vx = Math.abs(ball.vx) * BALL_WALL_RESTITUTION;
+    addHitFlash(ball.x, ball.y, ball.z, 0.58);
   } else if (ball.x > maxX) {
     ball.x = maxX;
     ball.vx = -Math.abs(ball.vx) * BALL_WALL_RESTITUTION;
+    addHitFlash(ball.x, ball.y, ball.z, 0.58);
   }
 }
 
@@ -408,9 +467,11 @@ function handleBackGlassCollision(ball) {
   if (ball.y < minY) {
     ball.y = minY;
     ball.vy = Math.abs(ball.vy) * BALL_WALL_RESTITUTION;
+    addHitFlash(ball.x, ball.y, ball.z, 0.62);
   } else if (ball.y > maxY) {
     ball.y = maxY;
     ball.vy = -Math.abs(ball.vy) * BALL_WALL_RESTITUTION;
+    addHitFlash(ball.x, ball.y, ball.z, 0.62);
   }
 }
 
@@ -425,7 +486,8 @@ function handleNetCollision(ball, previousY) {
   ball.y = previousY < 10 ? 9.7 : 10.3;
   ball.vy = -ball.vy * BALL_NET_RESTITUTION;
   ball.vx *= 0.58;
-  ball.vz = Math.max(0.45, ball.vz * 0.42);
+  ball.vz = Math.max(0.68, Math.abs(ball.vz) * 0.36);
+  addHitFlash(ball.x, ball.y, BALL_NET_HEIGHT, 0.9);
   awardPoint(getOpponentSide(ball.lastHitBy), "NET");
 }
 
@@ -445,20 +507,66 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   const contact = clamp((ball.x - paddle.x) / halfWidth, -1, 1);
   const contactDirection = getPaddleContactDirection(contact);
   const spin = clamp(paddle.vx * PADDLE_SPIN_TRANSFER, -1.8, 1.8);
+  const rallySpeedBonus = getRallySpeedBonus();
 
   ball.y = paddle.y + direction * (ball.radius + 0.06);
   ball.vx = clamp(
-    contactDirection * 4.55 + spin * 0.72,
+    contactDirection * (4.55 + rallySpeedBonus * 0.22) + spin * 0.72,
     -BALL_MAX_SIDE_SPEED,
     BALL_MAX_SIDE_SPEED
   );
-  ball.vy = direction * (6.7 + Math.abs(contactDirection) * 1.25);
+  ball.vy = direction * (6.7 + rallySpeedBonus + Math.abs(contactDirection) * 1.25);
   ball.vz = BALL_PADDLE_LIFT;
   ball.spin = spin;
   ball.hasCourtBounce = false;
   ball.lastHitBy = hitter;
   gameState.ballSide = hitter;
   gameState.bouncesOnSide = 0;
+  gameState.rallyHits += 1;
+  addHitFlash(ball.x, paddle.y, Math.max(0.5, ball.z), 1);
+  addHitParticles(ball.x, paddle.y, Math.max(0.5, ball.z), direction, contact);
+}
+
+function getRallySpeedBonus() {
+  return Math.min(
+    BALL_MAX_RALLY_SPEED_BONUS,
+    gameState.rallyHits * BALL_SPEED_RAMP_PER_HIT
+  );
+}
+
+function addHitFlash(x, y, z, intensity) {
+  renderState.hitEffects.push({
+    type: "flash",
+    x,
+    y,
+    z,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    intensity,
+    age: 0,
+    life: HIT_FLASH_LIFETIME
+  });
+}
+
+function addHitParticles(x, y, z, direction, contact) {
+  for (let index = 0; index < HIT_PARTICLE_COUNT; index += 1) {
+    const spread = (index / (HIT_PARTICLE_COUNT - 1) - 0.5) * 2;
+    const speed = 1.3 + Math.random() * 1.9;
+
+    renderState.hitEffects.push({
+      type: "particle",
+      x,
+      y,
+      z,
+      vx: (spread + contact * 0.8) * speed,
+      vy: direction * (0.9 + Math.random() * 1.35),
+      vz: 1.4 + Math.random() * 1.9,
+      intensity: 0.75 + Math.random() * 0.25,
+      age: 0,
+      life: HIT_PARTICLE_LIFETIME
+    });
+  }
 }
 
 function getPaddleContactDirection(contact) {
@@ -544,7 +652,9 @@ function drawShell() {
   drawNet();
   drawPaddle(renderState.aiPaddle);
   drawPaddle(renderState.playerPaddle);
+  drawBallTrail();
   drawBall(renderState.ball);
+  drawHitEffects();
   drawScore();
   if (gameState.status !== "playing") {
     drawOverlay();
@@ -673,7 +783,10 @@ function drawPaddle(paddle) {
   context.restore();
 
   context.save();
-  applyGlow(18, 1);
+  applyGlow(20, 0.78);
+  context.fillRect(screenX, screenY, paddleWidth, paddleThickness);
+  context.shadowBlur = 4;
+  context.globalAlpha = 1;
   context.fillRect(screenX, screenY, paddleWidth, paddleThickness);
   context.globalAlpha = 0.55;
   context.fillRect(
@@ -683,6 +796,29 @@ function drawPaddle(paddle) {
     Math.max(1.5, paddleThickness * 0.18)
   );
   context.restore();
+}
+
+function drawBallTrail() {
+  renderState.ballTrail.forEach((trailPoint) => {
+    const center = projectCourtPoint(trailPoint.x, trailPoint.y);
+    const heightOffset = getHeightScreenOffset(trailPoint.z);
+    const edge = projectCourtPoint(trailPoint.x + trailPoint.radius, trailPoint.y);
+    const progress = trailPoint.age / trailPoint.life;
+    const radius = Math.max(3, Math.abs(edge.x - center.x) * (1 + trailPoint.z * 0.06));
+
+    context.save();
+    applyGlow(16, (1 - progress) * 0.34);
+    context.beginPath();
+    context.arc(
+      center.x,
+      center.y - heightOffset,
+      radius * (1.45 - progress * 0.35),
+      0,
+      Math.PI * 2
+    );
+    context.fill();
+    context.restore();
+  });
 }
 
 function drawBall(ball) {
@@ -709,9 +845,51 @@ function drawBall(ball) {
   context.restore();
 
   context.save();
-  applyGlow(18, 1);
+  applyGlow(24, 0.82);
+  context.beginPath();
+  context.arc(center.x, center.y - heightOffset, radius * 1.14, 0, Math.PI * 2);
+  context.fill();
+  context.shadowBlur = 5;
+  context.globalAlpha = 1;
   context.beginPath();
   context.arc(center.x, center.y - heightOffset, radius, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawHitEffects() {
+  renderState.hitEffects.forEach((effect) => {
+    if (effect.type === "flash") {
+      drawHitFlash(effect);
+    } else {
+      drawHitParticle(effect);
+    }
+  });
+}
+
+function drawHitFlash(effect) {
+  const center = projectCourtPoint(effect.x, effect.y);
+  const progress = effect.age / effect.life;
+  const radius = getCourtMeterScale() * (0.2 + progress * 0.7) * effect.intensity;
+
+  context.save();
+  applyGlow(18, (1 - progress) * 0.62 * effect.intensity);
+  context.lineWidth = Math.max(1.2, getCourtMeterScale() * 0.035);
+  context.beginPath();
+  context.arc(center.x, center.y - getHeightScreenOffset(effect.z), radius, 0, Math.PI * 2);
+  context.stroke();
+  context.restore();
+}
+
+function drawHitParticle(effect) {
+  const center = projectCourtPoint(effect.x, effect.y);
+  const progress = effect.age / effect.life;
+  const radius = Math.max(1.2, getCourtMeterScale() * 0.045 * (1 - progress));
+
+  context.save();
+  applyGlow(12, (1 - progress) * 0.72 * effect.intensity);
+  context.beginPath();
+  context.arc(center.x, center.y - getHeightScreenOffset(effect.z), radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
 }

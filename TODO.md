@@ -86,12 +86,12 @@
 ## Phase 9 - Game Feel
 
 - [x] Add paddle movement spin.
-- [ ] Add glow effects consistently.
-- [ ] Add small hit flash or particle effect.
-- [ ] Add ball trail.
-- [ ] Tune ball speed ramp.
-- [ ] Tune paddle size and speed.
-- [ ] Tune net collision feel.
+- [x] Add glow effects consistently.
+- [x] Add small hit flash or particle effect.
+- [x] Add ball trail.
+- [x] Tune ball speed ramp.
+- [x] Tune paddle size and speed.
+- [x] Tune net collision feel.
 
 ## Phase 10 - Verification
 
