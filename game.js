@@ -11,6 +11,8 @@ const BACKGROUND_COLOR = "#1E8FD5";
 const WALL_DEPTH_RATIO = 0.115;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
+const PLAYER_PADDLE_Y_RANGE = 0.95;
+const AI_PADDLE_Y_RANGE = 0.5;
 const PLAYER_PADDLE_WIDTH = 2.2;
 const PLAYER_MOBILE_PADDLE_WIDTH = 2.58;
 const AI_PADDLE_WIDTH = 1.95;
@@ -26,6 +28,8 @@ const BALL_MIN_BOUNCE_VELOCITY = 1.25;
 const BALL_NET_HEIGHT = 0.42;
 const BALL_NET_RESTITUTION = 0.36;
 const BALL_WALL_RESTITUTION = 0.84;
+const BALL_AIR_WALL_RESTITUTION = 0.42;
+const BALL_PADDLE_STROKE_ACCELERATION = 0.58;
 const BALL_HEIGHT_SCREEN_SCALE = 0.56;
 const BALL_MAX_SIDE_SPEED = 5.4;
 const BALL_SPEED_RAMP_PER_HIT = 0.22;
@@ -58,13 +62,15 @@ const renderState = {
     x: 5,
     y: PLAYER_PADDLE_Y,
     width: PLAYER_PADDLE_WIDTH,
-    vx: 0
+    vx: 0,
+    vy: 0
   },
   aiPaddle: {
     x: 5,
     y: AI_PADDLE_Y,
     width: AI_PADDLE_WIDTH,
-    vx: 0
+    vx: 0,
+    vy: 0
   },
   ball: {
     x: BALL_START_X,
@@ -85,6 +91,7 @@ const renderState = {
 const inputState = {
   activePointerId: null,
   targetX: renderState.playerPaddle.x,
+  targetY: renderState.playerPaddle.y,
   smoothingFrame: 0
 };
 
@@ -177,8 +184,11 @@ function updateResponsivePaddles() {
     : PLAYER_PADDLE_WIDTH;
   renderState.aiPaddle.width = AI_PADDLE_WIDTH;
   inputState.targetX = clampPlayerPaddleX(inputState.targetX);
+  inputState.targetY = clampPlayerPaddleY(inputState.targetY);
   renderState.playerPaddle.x = clampPlayerPaddleX(renderState.playerPaddle.x);
+  renderState.playerPaddle.y = clampPlayerPaddleY(renderState.playerPaddle.y);
   renderState.aiPaddle.x = clampAiPaddleX(renderState.aiPaddle.x);
+  renderState.aiPaddle.y = clampAiPaddleY(renderState.aiPaddle.y);
 }
 
 function queueResize() {
@@ -210,7 +220,10 @@ function updatePlayerPaddle() {
   movePlayerPaddleTowardTarget();
   drawShell();
 
-  if (renderState.playerPaddle.x !== inputState.targetX) {
+  if (
+    renderState.playerPaddle.x !== inputState.targetX ||
+    renderState.playerPaddle.y !== inputState.targetY
+  ) {
     queueInputRender();
   }
 }
@@ -218,12 +231,18 @@ function updatePlayerPaddle() {
 function movePlayerPaddleTowardTarget(delta = 1 / 60) {
   const paddle = renderState.playerPaddle;
   const previousX = paddle.x;
+  const previousY = paddle.y;
   const nextX = lerp(paddle.x, inputState.targetX, PADDLE_SMOOTHING);
+  const nextY = lerp(paddle.y, inputState.targetY, PADDLE_SMOOTHING);
 
   paddle.x = clampPlayerPaddleX(
     Math.abs(nextX - inputState.targetX) < 0.01 ? inputState.targetX : nextX
   );
+  paddle.y = clampPlayerPaddleY(
+    Math.abs(nextY - inputState.targetY) < 0.01 ? inputState.targetY : nextY
+  );
   paddle.vx = (paddle.x - previousX) / Math.max(delta, 1 / 120);
+  paddle.vy = (paddle.y - previousY) / Math.max(delta, 1 / 120);
 }
 
 function startGame() {
@@ -370,11 +389,16 @@ function updateAiPaddle(delta) {
 
   const paddle = renderState.aiPaddle;
   const previousX = paddle.x;
+  const previousY = paddle.y;
   const maxStep = AI_MAX_SPEED * delta;
   const nextX = moveToward(paddle.x, aiState.targetX, maxStep);
+  const targetY = ball.vy < 0 ? AI_PADDLE_Y + AI_PADDLE_Y_RANGE * 0.45 : AI_PADDLE_Y;
+  const nextY = moveToward(paddle.y, targetY, maxStep * 0.42);
 
   paddle.x = clampAiPaddleX(nextX);
+  paddle.y = clampAiPaddleY(nextY);
   paddle.vx = (paddle.x - previousX) / Math.max(delta, 1 / 120);
+  paddle.vy = (paddle.y - previousY) / Math.max(delta, 1 / 120);
 }
 
 function getAiTargetX(ball) {
@@ -438,41 +462,43 @@ function handleCourtBounce(ball) {
 }
 
 function handleSideGlassCollision(ball) {
-  if (!ball.hasCourtBounce) {
-    return;
-  }
-
   const minX = ball.radius;
   const maxX = COURT_WIDTH_METERS - ball.radius;
+  const restitution = getWallRestitution(ball);
 
   if (ball.x < minX) {
     ball.x = minX;
-    ball.vx = Math.abs(ball.vx) * BALL_WALL_RESTITUTION;
+    ball.vx = Math.abs(ball.vx) * restitution;
+    ball.spin *= 0.42;
     addHitFlash(ball.x, ball.y, ball.z, 0.58);
   } else if (ball.x > maxX) {
     ball.x = maxX;
-    ball.vx = -Math.abs(ball.vx) * BALL_WALL_RESTITUTION;
+    ball.vx = -Math.abs(ball.vx) * restitution;
+    ball.spin *= 0.42;
     addHitFlash(ball.x, ball.y, ball.z, 0.58);
   }
 }
 
 function handleBackGlassCollision(ball) {
-  if (!ball.hasCourtBounce) {
-    return;
-  }
-
   const minY = ball.radius;
   const maxY = COURT_LENGTH_METERS - ball.radius;
+  const restitution = getWallRestitution(ball);
 
   if (ball.y < minY) {
     ball.y = minY;
-    ball.vy = Math.abs(ball.vy) * BALL_WALL_RESTITUTION;
+    ball.vy = Math.abs(ball.vy) * restitution;
+    ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
   } else if (ball.y > maxY) {
     ball.y = maxY;
-    ball.vy = -Math.abs(ball.vy) * BALL_WALL_RESTITUTION;
+    ball.vy = -Math.abs(ball.vy) * restitution;
+    ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
   }
+}
+
+function getWallRestitution(ball) {
+  return ball.hasCourtBounce ? BALL_WALL_RESTITUTION : BALL_AIR_WALL_RESTITUTION;
 }
 
 function handleNetCollision(ball, previousY) {
@@ -508,6 +534,7 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
   const contactDirection = getPaddleContactDirection(contact);
   const spin = clamp(paddle.vx * PADDLE_SPIN_TRANSFER, -1.8, 1.8);
   const rallySpeedBonus = getRallySpeedBonus();
+  const strokeSpeedBonus = getPaddleStrokeSpeedBonus(paddle, direction);
 
   ball.y = paddle.y + direction * (ball.radius + 0.06);
   ball.vx = clamp(
@@ -515,8 +542,10 @@ function handlePaddleCollision(ball, paddle, direction, previousY, hitter) {
     -BALL_MAX_SIDE_SPEED,
     BALL_MAX_SIDE_SPEED
   );
-  ball.vy = direction * (6.7 + rallySpeedBonus + Math.abs(contactDirection) * 1.25);
-  ball.vz = BALL_PADDLE_LIFT;
+  ball.vy =
+    direction *
+    Math.max(4.25, 6.7 + rallySpeedBonus + strokeSpeedBonus + Math.abs(contactDirection) * 1.25);
+  ball.vz = Math.max(5.9, BALL_PADDLE_LIFT + strokeSpeedBonus * 0.22);
   ball.spin = spin;
   ball.hasCourtBounce = false;
   ball.lastHitBy = hitter;
@@ -531,6 +560,14 @@ function getRallySpeedBonus() {
   return Math.min(
     BALL_MAX_RALLY_SPEED_BONUS,
     gameState.rallyHits * BALL_SPEED_RAMP_PER_HIT
+  );
+}
+
+function getPaddleStrokeSpeedBonus(paddle, direction) {
+  return clamp(
+    paddle.vy * direction * BALL_PADDLE_STROKE_ACCELERATION,
+    -1.8,
+    1.8
   );
 }
 
@@ -763,12 +800,11 @@ function drawPaddle(paddle) {
   const center = projectCourtPoint(paddle.x, paddle.y);
   const left = projectCourtPoint(paddle.x - halfWidth, paddle.y);
   const right = projectCourtPoint(paddle.x + halfWidth, paddle.y);
-  const ballHeight = Math.max(0, renderState.ball.z);
-  const heightOffset = getHeightScreenOffset(ballHeight);
   const paddleWidth = Math.abs(right.x - left.x);
   const paddleThickness = Math.max(7, layout.court.width * 0.028);
   const screenX = center.x - paddleWidth / 2;
-  const screenY = center.y - heightOffset - paddleThickness / 2;
+  const screenY = center.y - paddleThickness / 2;
+  const shadowOffset = Math.max(5, paddleThickness * 0.58);
 
   context.save();
   context.globalAlpha = 0.26;
@@ -776,9 +812,9 @@ function drawPaddle(paddle) {
   context.filter = `blur(${Math.max(3, paddleThickness * 0.45)}px)`;
   context.fillRect(
     center.x - paddleWidth / 2,
-    center.y + paddleThickness * 0.08,
+    center.y + shadowOffset,
     paddleWidth,
-    paddleThickness
+    Math.max(3, paddleThickness * 0.68)
   );
   context.restore();
 
@@ -1022,10 +1058,26 @@ function clampPlayerPaddleX(xMeters) {
   return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
 }
 
+function clampPlayerPaddleY(yMeters) {
+  return clamp(
+    yMeters,
+    PLAYER_PADDLE_Y - PLAYER_PADDLE_Y_RANGE * 0.72,
+    PLAYER_PADDLE_Y + PLAYER_PADDLE_Y_RANGE * 0.48
+  );
+}
+
 function clampAiPaddleX(xMeters) {
   const halfWidth = renderState.aiPaddle.width / 2;
 
   return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
+}
+
+function clampAiPaddleY(yMeters) {
+  return clamp(
+    yMeters,
+    AI_PADDLE_Y - AI_PADDLE_Y_RANGE * 0.48,
+    AI_PADDLE_Y + AI_PADDLE_Y_RANGE * 0.72
+  );
 }
 
 function applyGlow(blur, alpha) {
@@ -1073,6 +1125,7 @@ function handlePointerInput(event) {
 
   const courtPoint = screenToCourtPoint(event.clientX, event.clientY);
   inputState.targetX = clampPlayerPaddleX(courtPoint.x);
+  inputState.targetY = clampPlayerPaddleY(courtPoint.y);
   queueInputRender();
 }
 

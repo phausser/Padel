@@ -49,6 +49,10 @@ assert.match(game, /handleCourtBounce/, "game.js handles court bounce behavior")
 assert.match(game, /handlePaddleCollision/, "game.js handles paddle collision");
 assert.match(game, /getPaddleContactDirection/, "game.js steers paddle hits by contact zone");
 assert.match(game, /PADDLE_SPIN_TRANSFER/, "game.js transfers paddle movement into ball spin");
+assert.match(game, /PLAYER_PADDLE_Y_RANGE/, "game.js allows a small player stroke lane");
+assert.match(game, /BALL_AIR_WALL_RESTITUTION/, "game.js constrains airborne wall collisions");
+assert.match(game, /BALL_PADDLE_STROKE_ACCELERATION/, "game.js changes return speed from paddle stroke");
+assert.match(game, /getPaddleStrokeSpeedBonus/, "game.js computes forward and backward stroke speed");
 assert.match(game, /BALL_TRAIL_MAX_POINTS/, "game.js caps the glowing ball trail length");
 assert.match(game, /drawBallTrail/, "game.js draws a fading ball trail");
 assert.match(game, /addHitFlash/, "game.js adds small hit flash effects");
