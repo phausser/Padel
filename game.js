@@ -4,6 +4,9 @@ const canvas = document.querySelector("#game-canvas");
 const context = canvas.getContext("2d");
 const COURT_WIDTH_METERS = 10;
 const COURT_LENGTH_METERS = 20;
+const SERVICE_BOX_LENGTH = 6.95;
+const SERVICE_LINE_TOP = COURT_LENGTH_METERS / 2 - SERVICE_BOX_LENGTH;
+const SERVICE_LINE_BOTTOM = COURT_LENGTH_METERS / 2 + SERVICE_BOX_LENGTH;
 const COURT_ASPECT_RATIO = COURT_WIDTH_METERS / COURT_LENGTH_METERS;
 const MIN_COURT_MARGIN = 30;
 const MAX_DEVICE_PIXEL_RATIO = 3;
@@ -46,7 +49,7 @@ const HIT_PARTICLE_COUNT = 8;
 const SOUND_MASTER_VOLUME = 0.18;
 const MAX_FRAME_DELTA = 1 / 30;
 const POINT_RESET_DELAY_MS = 900;
-const WINNING_SCORE = 7;
+const WINNING_SCORE = 4;
 const WIN_BY = 2;
 const AI_MAX_SPEED = 6.25;
 const AI_REACTION_INTERVAL = 0.14;
@@ -58,6 +61,7 @@ const renderState = {
     player: 0,
     ai: 0
   },
+  games: { player: 0, ai: 0 },
   playerPaddle: {
     x: 5,
     y: PLAYER_PADDLE_Y,
@@ -110,7 +114,9 @@ const gameState = {
   message: "TAP / CLICK",
   ballSide: "player",
   bouncesOnSide: 0,
-  rallyHits: 0
+  rallyHits: 0,
+  server: "player",
+  serveAttempt: 1
 };
 
 const audioState = {
@@ -254,7 +260,7 @@ function movePlayerPaddleTowardTarget(delta = 1 / 60) {
 }
 
 function startGame() {
-  if (gameState.status === "playing") {
+  if (gameState.status === "playing" || gameState.status === "point") {
     return;
   }
 
@@ -263,6 +269,8 @@ function startGame() {
   if (gameState.status === "gameover") {
     renderState.score.player = 0;
     renderState.score.ai = 0;
+    gameState.server = getOpponentSide(gameState.server);
+    gameState.serveAttempt = 1;
   }
 
   gameState.status = "playing";
@@ -274,21 +282,54 @@ function startGame() {
   }
 }
 
+function getServiceSetup() {
+  const fromRight = (renderState.score.player + renderState.score.ai) % 2 === 0;
+  const direction = gameState.server === "player" ? -1 : 1;
+  const x = (fromRight === (direction === -1)) ? 7.5 : 2.5;
+  return {
+    x,
+    y: direction === -1 ? PLAYER_PADDLE_Y : AI_PADDLE_Y,
+    targetX: COURT_WIDTH_METERS - x,
+    targetY: direction === -1 ? 6 : 14,
+    direction
+  };
+}
+
+function isInServiceBox(ball) {
+  const { targetX, direction } = getServiceSetup();
+  const lineTolerance = 0.025;
+  const minX = targetX < 5 ? 0 : 5;
+  const maxX = targetX < 5 ? 5 : 10;
+  const minY = direction < 0 ? SERVICE_LINE_TOP : 10;
+  const maxY = direction < 0 ? 10 : SERVICE_LINE_BOTTOM;
+  return ball.x >= minX - lineTolerance && ball.x <= maxX + lineTolerance &&
+    ball.y >= minY - lineTolerance && ball.y <= maxY + lineTolerance;
+}
+
 function resetBall() {
+  const setup = getServiceSetup();
+  const paddle = gameState.server === "player" ? renderState.playerPaddle : renderState.aiPaddle;
+  Object.assign(paddle, { x: setup.x, y: setup.y, vx: 0, vy: 0 });
+  if (gameState.server === "player") {
+    inputState.targetX = setup.x;
+    inputState.targetY = setup.y;
+  }
   Object.assign(renderState.ball, {
-    x: clamp(renderState.playerPaddle.x, BALL_RADIUS, COURT_WIDTH_METERS - BALL_RADIUS),
-    y: renderState.playerPaddle.y - PADDLE_COLLISION_DEPTH - BALL_RADIUS - 0.03,
-    z: 1.15,
-    vx: 0.74,
-    vy: -6.6,
+    x: paddle.x,
+    y: paddle.y + setup.direction * (PADDLE_COLLISION_DEPTH + BALL_RADIUS + 0.03),
+    z: 0.85,
+    vx: 0,
+    vy: setup.direction * 6.6,
     vz: 0,
     spin: 0,
     hasCourtBounce: false,
     isServe: true,
-    lastHitBy: "player"
+    lastHitBy: gameState.server
   });
-  renderState.ball.vx = renderState.ball.x > COURT_WIDTH_METERS / 2 ? -0.74 : 0.74;
-  renderState.ball.vz = getShotLift(renderState.ball, -1);
+  const ball = renderState.ball;
+  const flightTime = Math.abs((setup.targetY - ball.y) / ball.vy);
+  ball.vx = (setup.targetX - ball.x) / flightTime;
+  ball.vz = (0.5 * BALL_GRAVITY * flightTime ** 2 - ball.z) / flightTime;
   gameState.message = "";
   gameState.ballSide = getBallSide(renderState.ball.y);
   gameState.bouncesOnSide = 0;
@@ -296,7 +337,7 @@ function resetBall() {
   renderState.ballTrail = [];
   renderState.hitEffects = [];
   addHitFlash(renderState.ball.x, renderState.ball.y, renderState.ball.z, 1);
-  addHitParticles(renderState.ball.x, renderState.ball.y, renderState.ball.z, -1, 0);
+  addHitParticles(renderState.ball.x, renderState.ball.y, renderState.ball.z, setup.direction, 0);
   playSound("paddle", 0.65);
   aiState.targetX = renderState.aiPaddle.x;
   aiState.reactionTimer = 0;
@@ -409,7 +450,8 @@ function updateAiPaddle(delta) {
   const previousY = paddle.y;
   const maxStep = AI_MAX_SPEED * delta;
   const nextX = moveToward(paddle.x, aiState.targetX, maxStep);
-  const targetY = ball.vy < 0 ? clampAiPaddleY(ball.y + 0.45) : AI_PADDLE_Y;
+  const waitingForServeBounce = ball.isServe && !ball.hasCourtBounce && gameState.server === "player";
+  const targetY = waitingForServeBounce ? 4.8 : ball.vy < 0 ? clampAiPaddleY(ball.y + 0.45) : AI_PADDLE_Y;
   const nextY = moveToward(paddle.y, targetY, maxStep * 0.46);
 
   paddle.x = clampAiPaddleX(nextX);
@@ -466,6 +508,10 @@ function handleCourtBounce(ball) {
   }
 
   ball.z = 0;
+  if (ball.isServe && !ball.hasCourtBounce && !isInServiceBox(ball)) {
+    awardPoint(getOpponentSide(ball.lastHitBy), "SERVICE BOX");
+    return;
+  }
   if (getBallSide(ball.y) === ball.lastHitBy && !ball.hasCourtBounce) {
     awardPoint(getOpponentSide(ball.lastHitBy), "OWN COURT");
     return;
@@ -571,6 +617,11 @@ function handlePaddleCollision(ball, paddle, direction, previousX, previousY, hi
   const withinPaddle = Math.abs(impactX - paddle.x) <= halfWidth + ball.radius;
 
   if (!crossedPaddle || !withinPaddle || !ballMovingIntoPaddle || ball.lastHitBy === hitter) {
+    return;
+  }
+
+  if (ball.isServe && !ball.hasCourtBounce) {
+    awardPoint(ball.lastHitBy, "SERVE VOLLEY");
     return;
   }
 
@@ -701,6 +752,16 @@ function awardPoint(winner, reason) {
     return;
   }
 
+  if (renderState.ball.isServe && winner !== gameState.server &&
+      ["SERVICE BOX", "FENCE", "WALL BEFORE BOUNCE", "OWN COURT", "NET"].includes(reason) &&
+      gameState.serveAttempt === 1) {
+    gameState.serveAttempt = 2;
+    gameState.status = "point";
+    gameState.message = "SECOND SERVE";
+    gameState.pointResumeTime = performance.now() + POINT_RESET_DELAY_MS;
+    return;
+  }
+  gameState.serveAttempt = 1;
   renderState.score[winner] += 1;
   gameState.message = winner === "player" ? "POINT" : "AI POINT";
   playSound(winner === "player" ? "point" : "miss", 0.9);
@@ -710,8 +771,9 @@ function awardPoint(winner, reason) {
   }
 
   if (hasWinner()) {
+    renderState.games[winner] += 1;
     gameState.status = "gameover";
-    gameState.message = renderState.score.player > renderState.score.ai ? "YOU WIN" : "AI WINS";
+    gameState.message = winner === "player" ? "GAME - YOU" : "GAME - AI";
     return;
   }
 
@@ -871,14 +933,10 @@ function drawGlassWalls() {
 function drawCourtMarkings() {
   context.save();
   applyGlow(10, 0.72);
-  context.lineWidth = 1.2;
-
-  drawProjectedLine(5, 0, 5, 20);
-  drawProjectedLine(0, 6, 10, 6);
-  drawProjectedLine(0, 14, 10, 14);
-  drawProjectedLine(2.5, 0, 2.5, 20, 0.24);
-  drawProjectedLine(7.5, 0, 7.5, 20, 0.24);
-
+  context.lineWidth = Math.max(1, getCourtMeterScale() * 0.05);
+  drawProjectedLine(0, SERVICE_LINE_TOP, 10, SERVICE_LINE_TOP);
+  drawProjectedLine(0, SERVICE_LINE_BOTTOM, 10, SERVICE_LINE_BOTTOM);
+  drawProjectedLine(5, SERVICE_LINE_TOP - 0.2, 5, SERVICE_LINE_BOTTOM + 0.2);
   context.restore();
 }
 
@@ -1026,6 +1084,14 @@ function drawHitParticle(effect) {
   context.restore();
 }
 
+function getScoreLabel(side) {
+  const own = renderState.score[side];
+  const other = renderState.score[getOpponentSide(side)];
+  if (hasWinner() && own > other) return "GAME";
+  if (own >= 3 && other >= 3) return own > other ? "AD" : "40";
+  return ["0", "15", "30", "40"][Math.min(own, 3)];
+}
+
 function drawScore() {
   const { width } = layout.viewport;
   const court = layout.court;
@@ -1040,10 +1106,13 @@ function drawScore() {
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(
-    `${renderState.score.ai}  ${renderState.score.player}`,
+    `${getScoreLabel("ai")} : ${getScoreLabel("player")}${renderState.score.ai >= 3 && renderState.score.ai === renderState.score.player ? " DEUCE" : ""}`,
     width / 2,
     Math.max(scoreFontSize / 2 + 2, court.y * 0.5)
   );
+  context.font = `${Math.max(12, scoreFontSize * 0.55)}px monospace`;
+  context.fillText(`AI ${renderState.games.ai} : ${renderState.games.player} YOU · GAMES`,
+    width / 2, court.y + court.height + 20);
   context.restore();
 }
 

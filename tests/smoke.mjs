@@ -70,7 +70,7 @@ assert.match(game, /ballSide/, "game.js tracks which side the ball is on");
 assert.match(game, /bouncesOnSide/, "game.js tracks bounce count per side");
 assert.match(game, /awardPoint/, "game.js awards points from rule events");
 assert.match(game, /POINT_RESET_DELAY_MS/, "game.js resets after scored points");
-assert.match(game, /WINNING_SCORE\s*=\s*7/, "game.js uses first-to-7 scoring");
+assert.match(game, /WINNING_SCORE\s*=\s*4/, "game.js uses four-point game scoring");
 assert.match(game, /WIN_BY\s*=\s*2/, "game.js requires win by two");
 assert.match(game, /status:\s*"ready"/, "game.js has a ready state");
 assert.match(game, /"gameover"/, "game.js has a game-over state");
@@ -95,17 +95,32 @@ const sandbox = {
 };
 runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
   gameState.status = "playing";
-  for (const [x, y] of [[2, 12], [8, 19]]) {
-    Object.assign(renderState.playerPaddle, { x, y });
-    resetBall();
-    assert.equal(renderState.ball.isServe, true);
-    assert.equal(renderState.ball.x, x);
-    assert.ok(renderState.ball.y < y);
-    assert.ok(renderState.ball.vy < 0);
-    for (let i = 0; i < 240 && renderState.ball.y > 10; i += 1) updateBall(1 / 120);
-    assert.equal(gameState.status, "playing");
-    assert.ok(renderState.ball.y <= 10, "serve clears the center net");
+  assert.equal(SERVICE_LINE_TOP, 3.05);
+  assert.equal(SERVICE_LINE_BOTTOM, 16.95);
+  for (const server of ["player", "ai"]) {
+    for (const points of [0, 1, 6, 7]) {
+      gameState.server = server;
+      renderState.score.player = points;
+      renderState.score.ai = 0;
+      gameState.serveAttempt = 2;
+      gameState.status = "playing";
+      resetBall();
+      const setup = getServiceSetup();
+      assert.equal(renderState.ball.isServe, true);
+      assert.equal(renderState.ball.x, setup.x);
+      // Keep receiver behind the landing zone so we test the first floor contact.
+      Object.assign(renderState.playerPaddle, { x: 5, y: 19 });
+      Object.assign(renderState.aiPaddle, { x: 5, y: 1 });
+      for (let i = 0; i < 400 && !renderState.ball.hasCourtBounce; i += 1) updateBall(1 / 120);
+      assert.equal(gameState.status, "playing");
+      assert.ok(renderState.ball.hasCourtBounce);
+      assert.ok(isInServiceBox(renderState.ball), "serve lands diagonally in service box");
+      assert.ok(Math.abs(renderState.ball.x - setup.targetX) < 0.1);
+    }
   }
+  gameState.server = "player";
+  renderState.score.player = 0;
+  renderState.score.ai = 0;
   for (const [x, y] of [[-1, 2], [11, 18], [5, -1], [5, 21]]) {
     Object.assign(renderState.ball, { hasCourtBounce: true, x, y, z: 20, vx: x < 0 ? -3 : 3, vy: y < 0 ? -3 : 3 });
     handleSideGlassCollision(renderState.ball);
@@ -131,6 +146,7 @@ runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
     ]) {
       renderState.score.ai = 0;
       renderState.score.player = 0;
+      gameState.serveAttempt = 2;
       gameState.status = "playing";
       gameState.bouncesOnSide = hasCourtBounce ? 1 : 0;
       Object.assign(renderState.ball, { x, y, z: 2, vx: x < 0 ? -3 : 3, isServe, hasCourtBounce, lastHitBy: "player" });
@@ -145,12 +161,13 @@ runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
     }
   }
   gameState.status = "playing";
+  gameState.serveAttempt = 2;
   Object.assign(renderState.ball, { x: 5, y: -1, z: 2, hasCourtBounce: false, lastHitBy: "player" });
   handleBackGlassCollision(renderState.ball);
   assert.equal(gameState.status, "point", "opponent wall before floor is a fault");
   gameState.status = "playing";
   gameState.bouncesOnSide = 0;
-  Object.assign(renderState.ball, { x: 5, y: 4, z: 0, vz: -4, hasCourtBounce: false, lastHitBy: "player" });
+  Object.assign(renderState.ball, { x: 5, y: 4, z: 0, vz: -4, hasCourtBounce: false, isServe: false, lastHitBy: "player" });
   handleCourtBounce(renderState.ball);
   assert.equal(gameState.status, "playing", "one bounce is allowed");
   renderState.ball.y = 11;
@@ -167,9 +184,48 @@ runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
   assert.ok(Math.abs(renderState.ball.z - (initialZ + initialVz * 0.01 - 0.5 * 9.81 * 0.01 ** 2)) < 1e-9);
   assert.ok(clampPlayerPaddleX(11) > 10 && clampPlayerPaddleX(-1) < 0);
   Object.assign(renderState.playerPaddle, { x: 10.5, y: 18 });
-  Object.assign(renderState.ball, { x: 9.8, y: 18.1, z: 2, vy: 5, lastHitBy: "ai" });
+  Object.assign(renderState.ball, { x: 9.8, y: 18.1, z: 2, vy: 5, hasCourtBounce: true, lastHitBy: "ai" });
   handlePaddleCollision(renderState.ball, renderState.playerPaddle, -1, 9.8, 17.8, "player");
   assert.equal(renderState.ball.isServe, false, "return ends service restrictions");
   assert.ok(renderState.ball.vy < 0, "outside paddle returns ball with its inside edge");
+
+  renderState.score.player = 0;
+  renderState.score.ai = 0;
+  renderState.ball.isServe = false;
+  for (const label of ["15", "30", "40", "GAME"]) {
+    gameState.status = "playing";
+    awardPoint("player", "DOUBLE BOUNCE");
+    assert.equal(getScoreLabel("player"), label);
+  }
+  assert.equal(gameState.status, "gameover");
+  Object.assign(renderState.score, { player: 3, ai: 3 });
+  for (const winner of ["player", "ai", "ai", "player"]) {
+    gameState.status = "playing";
+    awardPoint(winner, "DOUBLE BOUNCE");
+    assert.equal(hasWinner(), false);
+    assert.equal(getScoreLabel(winner), renderState.score.player === renderState.score.ai ? "40" : "AD");
+  }
+  for (let i = 0; i < 2; i += 1) {
+    gameState.status = "playing";
+    awardPoint("ai", "DOUBLE BOUNCE");
+  }
+  assert.equal(gameState.status, "gameover");
+  Object.assign(renderState.score, { player: 0, ai: 0 });
+  gameState.status = "playing";
+  gameState.serveAttempt = 1;
+  resetBall();
+  const firstX = renderState.ball.x;
+  Object.assign(renderState.ball, { x: 8, y: 6, z: 0 });
+  handleCourtBounce(renderState.ball);
+  assert.equal(gameState.serveAttempt, 2);
+  assert.equal(renderState.score.ai, 0);
+  gameState.status = "playing";
+  resetBall();
+  assert.equal(renderState.ball.x, firstX, "second serve uses same side");
+  Object.assign(renderState.ball, { x: 8, y: 6, z: 0 });
+  handleCourtBounce(renderState.ball);
+  assert.equal(renderState.score.ai, 1, "double fault awards receiver a point");
+  resetBall();
+  assert.notEqual(renderState.ball.x, firstX, "next point switches service side");
 `, sandbox);
 console.log("Serve and boundary physics tests passed.");

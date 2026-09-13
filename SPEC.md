@@ -108,15 +108,11 @@ Initial version should use arcade-friendly padel-inspired rules:
 
 ## Scoring
 
-Initial version can use arcade scoring:
-
-- First to 7 points wins a game.
-- Win by 2 points.
-- Show player and AI score in a simple Pong-style display.
-
-Optional later version:
-
-- Real padel/tennis scoring: `0`, `15`, `30`, `40`, advantage, game, set.
+- Standard advantage game scoring: 0, 15, 30, 40, game.
+- At 40–40 show deuce; the next point gives advantage. Losing advantage returns to deuce; winning the next point wins the game.
+- Display cumulative games separately from points, with AI left and human right.
+- After game, tap/click starts the next game at 0–0 and changes server. Each game starts serving from the server’s right side.
+- Sets and tie-breaks are deferred.
 
 ## AI
 
@@ -172,19 +168,24 @@ The first version may start immediately after a tap/click.
 - Sound effects.
 - Particle sparks on hits.
 - Difficulty selection.
-- Real padel scoring.
+- Sets and tie-breaks.
 - Local two-player mode.
 - Pause button.
 - Haptic feedback on supported mobile browsers.
-- Alternating servers.
 - More advanced ball height and wall physics.
 
 ## Serve
 
-- Start each rally immediately in front of the current player paddle position.
-- Launch toward the AI with lift, paddle sound, and hit effects.
+- Court measures 10 × 20 m, split into two 10 m halves. Each service box is 5 m wide and 6.95 m long from the net.
+- Service lines are at y = 3.05 m and y = 16.95 m; center service line extends 20 cm behind them. Line width is 5 cm.
+- Automatically position the server behind the service line, first on their right, then alternate sides after every completed point.
+- Launch from the serving paddle diagonally into the opposing service box. Check the first floor contact; service lines count as in.
+- A service fault allows a second attempt on the same side; a second fault awards a point to the receiver.
+- Receiver must let the serve bounce before returning it. The AI waits behind the landing zone.
+- Player serves the first game; server changes after each game.
 - Tap/click starts the game; after each point the existing short pause precedes an automatic serve.
+- The pre-hit bounce and human body/foot placement remain abstracted by the automatic paddle serve.
 
 ## Rules Reference
 
-Checked against [FIP Rules of Padel, application 1 January 2026](https://www.padelfip.com/wp-content/uploads/2025/12/FIP_Rules-of-Padel-1.pdf), rules 7 and 12–14. Official rules permit fence contact after an opposing floor bounce during a rally, but not on serve. Scoring and automatic serve remain arcade simplifications.
+Checked against [FIP Rules of Padel, application 1 January 2026](https://www.padelfip.com/wp-content/uploads/2025/12/FIP_Rules-of-Padel-1.pdf), court dimensions and rules 1, 6–8 and 12–14. Official rules permit fence contact after an opposing floor bounce during a rally, but not on serve. Games use advantage scoring; the automatic serve remains a control simplification.

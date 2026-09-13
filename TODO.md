@@ -63,7 +63,7 @@
 - [x] Award point after second bounce on a side.
 - [x] Award point when the ball fails to cross the net legally.
 - [x] Reset ball after a point.
-- [x] Implement first-to-7, win-by-2 scoring.
+- [x] Implement advantage game scoring (replaces initial first-to-7 mode).
 - [x] Implement game-over state.
 - [x] Implement restart.
 
@@ -106,7 +106,8 @@
 ## Later Enhancements
 
 - [x] Add sound effects.
-- [ ] Add real padel scoring.
+- [x] Add 15/30/40, deuce, advantage and game scoring.
+- [ ] Add sets and tie-breaks.
 - [x] Add serve from the current player paddle position.
 - [ ] Add difficulty selector.
 - [ ] Add local two-player mode.
@@ -128,3 +129,11 @@
 - [x] Penalize fence contacts on serve or before the opposing floor bounce; allow them after a rally bounce.
 - [x] Permit lateral paddle overhang with mobile control space.
 - [x] Check FIP rules and apply the official fence-contact rule.
+
+## Service Boxes and Game Scoring
+
+- [x] Correct service lines to 6.95 m from the net, with 5 cm line width.
+- [x] Alternate diagonal service boxes after every point; switch server after each game.
+- [x] Validate serve landing, second serve and double fault.
+- [x] Prevent serve volleys and position AI behind the landing zone.
+- [x] Show 15/30/40, deuce, advantage, game and cumulative games.
