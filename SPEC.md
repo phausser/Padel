@@ -40,9 +40,9 @@ The court is drawn as an orthographic top-down padel court:
 
 - The playing surface keeps the correct 10 m by 20 m doubles-court ratio.
 - Court lines remain rectangular, as if the camera is directly above the field.
-- Glass walls are drawn outward from the court edges to create visual depth.
+- Boundaries are flat white lines without outward wall surfaces.
 - Central net crosses the court horizontally.
-- Side and back glass walls are continuous outlines.
+- On each half, the side boundary nearest the center net is dotted mesh (60%); the rear 40% and both back boundaries are solid lines.
 - Court service and center lines may be simplified if they improve readability.
 
 ## Controls
@@ -50,7 +50,7 @@ The court is drawn as an orthographic top-down padel court:
 ### Desktop
 
 - Mouse movement controls the player paddle.
-- The player paddle follows the pointer horizontally.
+- The player paddle follows the pointer across its half, including lateral space outside the court.
 - Optional: subtle smoothing to avoid jitter.
 
 ### Mobile
@@ -68,8 +68,10 @@ The court is drawn as an orthographic top-down padel court:
 
 ### Paddle Behavior
 
-- Paddles are white glowing bars.
-- Paddle position is constrained to its side of the court.
+- Paddles are white glowing bars without cast shadows.
+- Both paddles automatically match the ball height; collision reach is independent of height.
+- Paddles stay on their own half but may extend laterally outside the court, allowing edge hits near the boundaries.
+- Mobile layout reserves enough lateral space for these strokes.
 - Paddle hits redirect the ball.
 - Hit angle depends on contact point on the paddle.
 - Optional later: spin or speed increase on strong hits.
@@ -78,6 +80,7 @@ The court is drawn as an orthographic top-down padel court:
 
 - Ball is a glowing white circle.
 - Ball has 2D court position plus a simplified height value.
+- Ball follows constant downward gravity of 9.81 m/s². Returns aim for a floor bounce in the opposing rear court.
 - Ball can bounce on the court surface.
 - Ball can bounce off glass after hitting the court.
 - Ball must cross the net to reach the other side.
@@ -93,11 +96,15 @@ The court is drawn as an orthographic top-down padel court:
 Initial version should use arcade-friendly padel-inspired rules:
 
 - A side may allow one court bounce before returning the ball.
-- If the ball bounces twice on the same side, the other player scores.
+- The second floor bounce since the last paddle hit ends the rally; wall contacts and net crossings never reset this count. The last hitter wins.
+- A shot that first bounces on the hitter’s own floor loses the point.
 - The ball may hit glass after bouncing.
-- The ball may not be returned directly from behind the player paddle.
+- Passing a paddle does not end the point; back-wall rebounds remain playable.
 - If the ball fails to cross the net after a hit, the hitting player loses the point.
-- If the ball gets stuck, leaves the playable area, or slows below a useful threshold, award the point based on last legal side.
+- All outer boundaries contain the ball at every height; there is no out-of-court scoring.
+- Hitting an opposing solid wall before a floor bounce loses the point. Own solid walls may be used for a return.
+- Fence contact is legal after the ball bounces on the opposing floor during a rally. Fence contact before that bounce, or during the serve before the receiver returns it, is a fault.
+- If the ball gets stuck or slows below a useful threshold, award the point to the opponent of the last hitter.
 
 ## Scoring
 
@@ -169,5 +176,15 @@ The first version may start immediately after a tap/click.
 - Local two-player mode.
 - Pause button.
 - Haptic feedback on supported mobile browsers.
-- Serve mechanics.
+- Alternating servers.
 - More advanced ball height and wall physics.
+
+## Serve
+
+- Start each rally immediately in front of the current player paddle position.
+- Launch toward the AI with lift, paddle sound, and hit effects.
+- Tap/click starts the game; after each point the existing short pause precedes an automatic serve.
+
+## Rules Reference
+
+Checked against [FIP Rules of Padel, application 1 January 2026](https://www.padelfip.com/wp-content/uploads/2025/12/FIP_Rules-of-Padel-1.pdf), rules 7 and 12–14. Official rules permit fence contact after an opposing floor bounce during a rally, but not on serve. Scoring and automatic serve remain arcade simplifications.

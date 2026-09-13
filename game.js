@@ -8,7 +8,7 @@ const COURT_ASPECT_RATIO = COURT_WIDTH_METERS / COURT_LENGTH_METERS;
 const MIN_COURT_MARGIN = 30;
 const MAX_DEVICE_PIXEL_RATIO = 3;
 const BACKGROUND_COLOR = "#1E8FD5";
-const WALL_DEPTH_RATIO = 0.115;
+const SIDE_WALL_LENGTH = COURT_LENGTH_METERS / 2 * 0.4;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
 const PADDLE_HALF_COURT_MARGIN = 0.55;
@@ -16,13 +16,12 @@ const PLAYER_PADDLE_WIDTH = 2.2;
 const PLAYER_MOBILE_PADDLE_WIDTH = 2.58;
 const AI_PADDLE_WIDTH = 1.95;
 const PADDLE_SMOOTHING = 0.35;
-const BALL_START_X = 5.35;
-const BALL_START_Y = 12.25;
+const BALL_START_X = 5;
 const BALL_RADIUS = 0.16;
-const BALL_GRAVITY = 5.8;
+const BALL_GRAVITY = 9.81;
 const BALL_FLOOR_RESTITUTION = 0.72;
 const BALL_FLOOR_FRICTION = 0.985;
-const BALL_PADDLE_LIFT = 7.6;
+const SHOT_TARGET_Y = 4;
 const BALL_MIN_BOUNCE_VELOCITY = 1.25;
 const BALL_NET_HEIGHT = 0.42;
 const BALL_NET_RESTITUTION = 0.36;
@@ -36,8 +35,8 @@ const BALL_SPIN_ACCELERATION = 1.45;
 const BALL_SPIN_DECAY = 0.92;
 const PADDLE_REACH_HEIGHT = 6.25;
 const PADDLE_COLLISION_DEPTH = 0.42;
+const BALL_START_Y = PLAYER_PADDLE_Y - PADDLE_COLLISION_DEPTH - BALL_RADIUS - 0.03;
 const PADDLE_SPIN_TRANSFER = 0.34;
-const PADDLE_SHADOW_COLOR = "#0b4f78";
 const SHADOW_HEIGHT_OFFSET_SCALE = 0.3;
 const BALL_TRAIL_MAX_POINTS = 12;
 const BALL_TRAIL_LIFETIME = 0.28;
@@ -83,6 +82,7 @@ const renderState = {
     spin: 0,
     radius: BALL_RADIUS,
     hasCourtBounce: false,
+    isServe: true,
     lastHitBy: "player"
   },
   ballTrail: [],
@@ -152,7 +152,8 @@ function resizeCanvas() {
 function getCourtBounds(width, height) {
   const shortestSide = Math.min(width, height);
   const courtMargin = Math.max(MIN_COURT_MARGIN, shortestSide * 0.055);
-  const safeWidth = Math.max(0, width - courtMargin * 2);
+  const paddleSpaceRatio = 1 + 2 * PLAYER_MOBILE_PADDLE_WIDTH / COURT_WIDTH_METERS;
+  const safeWidth = Math.max(0, Math.min(width - courtMargin * 2, (width - 16) / paddleSpaceRatio));
   const safeHeight = Math.max(0, height - courtMargin * 2);
   let courtWidth = Math.min(safeWidth, safeHeight * COURT_ASPECT_RATIO);
   let courtHeight = courtWidth / COURT_ASPECT_RATIO;
@@ -275,29 +276,35 @@ function startGame() {
 
 function resetBall() {
   Object.assign(renderState.ball, {
-    x: BALL_START_X,
-    y: BALL_START_Y,
+    x: clamp(renderState.playerPaddle.x, BALL_RADIUS, COURT_WIDTH_METERS - BALL_RADIUS),
+    y: renderState.playerPaddle.y - PADDLE_COLLISION_DEPTH - BALL_RADIUS - 0.03,
     z: 1.15,
     vx: 0.74,
     vy: -6.6,
-    vz: 3,
+    vz: 0,
     spin: 0,
     hasCourtBounce: false,
+    isServe: true,
     lastHitBy: "player"
   });
+  renderState.ball.vx = renderState.ball.x > COURT_WIDTH_METERS / 2 ? -0.74 : 0.74;
+  renderState.ball.vz = getShotLift(renderState.ball, -1);
   gameState.message = "";
   gameState.ballSide = getBallSide(renderState.ball.y);
   gameState.bouncesOnSide = 0;
   gameState.rallyHits = 0;
   renderState.ballTrail = [];
   renderState.hitEffects = [];
+  addHitFlash(renderState.ball.x, renderState.ball.y, renderState.ball.z, 1);
+  addHitParticles(renderState.ball.x, renderState.ball.y, renderState.ball.z, -1, 0);
+  playSound("paddle", 0.65);
   aiState.targetX = renderState.aiPaddle.x;
   aiState.reactionTimer = 0;
   aiState.mistakeOffset = 0;
 }
 
 function updateGame(time) {
-  const delta = Math.min(MAX_FRAME_DELTA, (time - gameState.lastTime) / 1000);
+  const delta = clamp((time - gameState.lastTime) / 1000, 0, MAX_FRAME_DELTA);
 
   gameState.lastTime = time;
   movePlayerPaddleTowardTarget(delta);
@@ -318,13 +325,13 @@ function updateBall(delta) {
   const previousX = ball.x;
   const previousY = ball.y;
 
+  ball.z += ball.vz * delta - 0.5 * BALL_GRAVITY * delta * delta;
   ball.vz -= BALL_GRAVITY * delta;
   ball.vx += ball.spin * BALL_SPIN_ACCELERATION * delta;
   ball.vx = clamp(ball.vx, -BALL_MAX_SIDE_SPEED, BALL_MAX_SIDE_SPEED);
   ball.spin *= BALL_SPIN_DECAY ** (delta * 60);
   ball.x += ball.vx * delta;
   ball.y += ball.vy * delta;
-  ball.z += ball.vz * delta;
 
   trackBallSide(ball);
   handleCourtBounce(ball);
@@ -333,7 +340,9 @@ function updateBall(delta) {
   }
 
   handleSideGlassCollision(ball);
+  if (gameState.status !== "playing") return;
   handleBackGlassCollision(ball);
+  if (gameState.status !== "playing") return;
   handleNetCollision(ball, previousY);
   if (gameState.status !== "playing") {
     return;
@@ -457,6 +466,10 @@ function handleCourtBounce(ball) {
   }
 
   ball.z = 0;
+  if (getBallSide(ball.y) === ball.lastHitBy && !ball.hasCourtBounce) {
+    awardPoint(getOpponentSide(ball.lastHitBy), "OWN COURT");
+    return;
+  }
   ball.hasCourtBounce = true;
   gameState.bouncesOnSide += 1;
   ball.vx *= BALL_FLOOR_FRICTION;
@@ -466,7 +479,7 @@ function handleCourtBounce(ball) {
   playSound("bounce", clamp(Math.abs(ball.vz) / 8, 0.35, 1));
 
   if (gameState.bouncesOnSide >= 2) {
-    awardPoint(getOpponentSide(gameState.ballSide), "DOUBLE BOUNCE");
+    awardPoint(ball.lastHitBy, "DOUBLE BOUNCE");
   }
 }
 
@@ -474,16 +487,11 @@ function handleSideGlassCollision(ball) {
   const minX = ball.radius;
   const maxX = COURT_WIDTH_METERS - ball.radius;
   const restitution = getWallRestitution(ball);
-
-  if (ball.x < minX) {
-    ball.x = minX;
-    ball.vx = Math.abs(ball.vx) * restitution;
-    ball.spin *= 0.42;
-    addHitFlash(ball.x, ball.y, ball.z, 0.58);
-    playSound("wall", clamp(Math.abs(ball.vx) / 5, 0.32, 1));
-  } else if (ball.x > maxX) {
-    ball.x = maxX;
-    ball.vx = -Math.abs(ball.vx) * restitution;
+  if (ball.x < minX || ball.x > maxX) {
+    ball.x = clamp(ball.x, minX, maxX);
+    const isFence = ball.y > SIDE_WALL_LENGTH && ball.y < COURT_LENGTH_METERS - SIDE_WALL_LENGTH;
+    if (handleBoundaryFault(ball, isFence)) return;
+    ball.vx = (ball.x === minX ? 1 : -1) * Math.abs(ball.vx) * restitution;
     ball.spin *= 0.42;
     addHitFlash(ball.x, ball.y, ball.z, 0.58);
     playSound("wall", clamp(Math.abs(ball.vx) / 5, 0.32, 1));
@@ -497,17 +505,32 @@ function handleBackGlassCollision(ball) {
 
   if (ball.y < minY) {
     ball.y = minY;
+    if (handleBoundaryFault(ball, false)) return;
     ball.vy = Math.abs(ball.vy) * restitution;
     ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
     playSound("wall", clamp(Math.abs(ball.vy) / 7, 0.36, 1));
   } else if (ball.y > maxY) {
     ball.y = maxY;
+    if (handleBoundaryFault(ball, false)) return;
     ball.vy = -Math.abs(ball.vy) * restitution;
     ball.vx *= 0.78;
     addHitFlash(ball.x, ball.y, ball.z, 0.62);
     playSound("wall", clamp(Math.abs(ball.vy) / 7, 0.36, 1));
   }
+}
+
+function handleBoundaryFault(ball, isFence) {
+  // FIP: mesh is legal after the opposing floor bounce, except on serve.
+  if (isFence && (ball.isServe || !ball.hasCourtBounce)) {
+    awardPoint(getOpponentSide(ball.lastHitBy), "FENCE");
+    return true;
+  }
+  if (getBallSide(ball.y) !== ball.lastHitBy && !ball.hasCourtBounce) {
+    awardPoint(getOpponentSide(ball.lastHitBy), "WALL BEFORE BOUNCE");
+    return true;
+  }
+  return false;
 }
 
 function getWallRestitution(ball) {
@@ -544,9 +567,10 @@ function handlePaddleCollision(ball, paddle, direction, previousX, previousY, hi
       : clamp((paddle.y - previousY) / (ball.y - previousY), 0, 1);
   const impactX = lerp(previousX, ball.x, impactAmount);
   const halfWidth = paddle.width / 2;
+  // Paddles automatically follow ball height; only court position determines reach.
   const withinPaddle = Math.abs(impactX - paddle.x) <= halfWidth + ball.radius;
 
-  if (!crossedPaddle || !withinPaddle || !ballMovingIntoPaddle) {
+  if (!crossedPaddle || !withinPaddle || !ballMovingIntoPaddle || ball.lastHitBy === hitter) {
     return;
   }
 
@@ -566,9 +590,10 @@ function handlePaddleCollision(ball, paddle, direction, previousX, previousY, hi
   ball.vy =
     direction *
     Math.max(4.25, 6.7 + rallySpeedBonus + strokeSpeedBonus + Math.abs(contactDirection) * 1.25);
-  ball.vz = Math.max(5.9, BALL_PADDLE_LIFT + strokeSpeedBonus * 0.22);
+  ball.vz = getShotLift(ball, direction);
   ball.spin = spin;
   ball.hasCourtBounce = false;
+  ball.isServe = false;
   ball.lastHitBy = hitter;
   gameState.ballSide = hitter;
   gameState.bouncesOnSide = 0;
@@ -583,6 +608,13 @@ function getRallySpeedBonus() {
     BALL_MAX_RALLY_SPEED_BONUS,
     gameState.rallyHits * BALL_SPEED_RAMP_PER_HIT
   );
+}
+
+// Aim for a floor bounce in the opposing rear court under constant gravity.
+function getShotLift(ball, direction) {
+  const targetY = direction < 0 ? SHOT_TARGET_Y : COURT_LENGTH_METERS - SHOT_TARGET_Y;
+  const flightTime = Math.max(0.35, Math.abs(targetY - ball.y) / Math.abs(ball.vy));
+  return (0.5 * BALL_GRAVITY * flightTime * flightTime - ball.z) / flightTime;
 }
 
 function getPaddleStrokeSpeedBonus(paddle, direction) {
@@ -642,14 +674,8 @@ function getPaddleContactDirection(contact) {
 function handleDeadBall(ball) {
   const tooSlow =
     Math.hypot(ball.vx, ball.vy) < 0.55 && ball.z < 0.16 && Math.abs(ball.vz) < 1.35;
-  const behindPlayer = ball.y > renderState.playerPaddle.y + 1.15;
-  const behindAi = ball.y < renderState.aiPaddle.y - 1.15;
 
-  if (behindPlayer) {
-    awardPoint("ai", "OUT");
-  } else if (behindAi) {
-    awardPoint("player", "OUT");
-  } else if (tooSlow) {
+  if (tooSlow) {
     awardPoint(getOpponentSide(ball.lastHitBy), "DEAD BALL");
   }
 }
@@ -659,7 +685,6 @@ function trackBallSide(ball) {
 
   if (currentSide !== gameState.ballSide) {
     gameState.ballSide = currentSide;
-    gameState.bouncesOnSide = 0;
   }
 }
 
@@ -793,8 +818,8 @@ function drawShell() {
 
   context.clearRect(0, 0, width, height);
   drawBackground(width, height);
-  drawGlassWalls();
   drawCourtSurface();
+  drawGlassWalls();
   drawCourtMarkings();
   drawNet();
   drawPaddle(renderState.aiPaddle);
@@ -821,52 +846,25 @@ function drawCourtSurface() {
   context.fillRect(x, y, width, height);
   applyGlow(14, 0.95);
   context.lineWidth = 2.2;
-  context.strokeRect(x, y, width, height);
-  context.strokeRect(x + width * 0.004, y + height * 0.004, width * 0.992, height * 0.992);
   context.restore();
 }
 
 function drawGlassWalls() {
-  const walls = getWallSegments();
-
   context.save();
-  context.fillStyle = "rgba(255, 255, 255, 0.16)";
-  context.shadowColor = "#fff";
-  context.shadowBlur = 12;
-
-  walls.forEach((wall) => {
-    context.beginPath();
-    context.moveTo(wall.innerStart.x, wall.innerStart.y);
-    context.lineTo(wall.innerEnd.x, wall.innerEnd.y);
-    context.lineTo(wall.outerEnd.x, wall.outerEnd.y);
-    context.lineTo(wall.outerStart.x, wall.outerStart.y);
-    context.closePath();
-    context.fill();
-  });
-
   applyGlow(16, 0.95);
-  context.lineWidth = 1.8;
+  context.lineWidth = 2;
+  drawProjectedLine(0, 0, COURT_WIDTH_METERS, 0);
+  drawProjectedLine(0, COURT_LENGTH_METERS, COURT_WIDTH_METERS, COURT_LENGTH_METERS);
 
-  walls.forEach((wall) => {
-    drawScreenLine(wall.innerStart, wall.innerEnd);
-    drawScreenLine(wall.outerStart, wall.outerEnd);
-    drawScreenLine(wall.innerStart, wall.outerStart, 0.44);
-    drawScreenLine(wall.innerEnd, wall.outerEnd, 0.44);
-  });
-
-  context.globalAlpha = 0.52;
-  context.lineWidth = 1;
-  walls.forEach((wall) => {
-    for (let index = 1; index < 5; index += 1) {
-      const amount = index / 5;
-      drawScreenLine(
-        lerpPoint(wall.innerStart, wall.innerEnd, amount),
-        lerpPoint(wall.outerStart, wall.outerEnd, amount),
-        0.38
-      );
-    }
-  });
-
+  for (const x of [0, COURT_WIDTH_METERS]) {
+    drawProjectedLine(x, 0, x, SIDE_WALL_LENGTH);
+    drawProjectedLine(x, COURT_LENGTH_METERS - SIDE_WALL_LENGTH, x, COURT_LENGTH_METERS);
+    context.save();
+    context.lineCap = "round";
+    context.setLineDash([1, 6]);
+    drawProjectedLine(x, SIDE_WALL_LENGTH, x, COURT_LENGTH_METERS - SIDE_WALL_LENGTH);
+    context.restore();
+  }
   context.restore();
 }
 
@@ -914,20 +912,6 @@ function drawPaddle(paddle) {
   const paddleThickness = Math.max(7, layout.court.width * 0.028);
   const screenX = center.x - paddleWidth / 2;
   const screenY = center.y - paddleThickness / 2;
-  const shadowOffset = getHeightShadowOffset(getPaddleRenderHeight());
-
-  context.save();
-  context.globalAlpha = 0.26;
-  context.fillStyle = PADDLE_SHADOW_COLOR;
-  context.filter = `blur(${Math.max(3, paddleThickness * 0.45)}px)`;
-  context.fillRect(
-    center.x - paddleWidth / 2 + shadowOffset.x,
-    center.y - paddleThickness * 0.34 + shadowOffset.y,
-    paddleWidth,
-    Math.max(3, paddleThickness * 0.68)
-  );
-  context.restore();
-
   context.save();
   applyGlow(20, 0.78);
   context.fillRect(screenX, screenY, paddleWidth, paddleThickness);
@@ -1003,10 +987,6 @@ function drawBall(ball) {
   context.arc(center.x, center.y, radius, 0, Math.PI * 2);
   context.fill();
   context.restore();
-}
-
-function getPaddleRenderHeight() {
-  return clamp(renderState.ball.z, 0, PADDLE_REACH_HEIGHT);
 }
 
 function drawHitEffects() {
@@ -1108,38 +1088,6 @@ function drawScreenLine(start, end, alpha = 1) {
   context.restore();
 }
 
-function getWallSegments() {
-  const { x, y, width, height } = layout.court;
-  const wallDepth = Math.max(12, Math.min(width, height) * WALL_DEPTH_RATIO);
-
-  return [
-    {
-      innerStart: { x, y },
-      innerEnd: { x: x + width, y },
-      outerStart: { x: x - wallDepth, y: y - wallDepth },
-      outerEnd: { x: x + width + wallDepth, y: y - wallDepth }
-    },
-    {
-      innerStart: { x: x + width, y },
-      innerEnd: { x: x + width, y: y + height },
-      outerStart: { x: x + width + wallDepth, y: y - wallDepth },
-      outerEnd: { x: x + width + wallDepth, y: y + height + wallDepth }
-    },
-    {
-      innerStart: { x: x + width, y: y + height },
-      innerEnd: { x, y: y + height },
-      outerStart: { x: x + width + wallDepth, y: y + height + wallDepth },
-      outerEnd: { x: x - wallDepth, y: y + height + wallDepth }
-    },
-    {
-      innerStart: { x, y: y + height },
-      innerEnd: { x, y },
-      outerStart: { x: x - wallDepth, y: y + height + wallDepth },
-      outerEnd: { x: x - wallDepth, y: y - wallDepth }
-    }
-  ];
-}
-
 function projectCourtPoint(xMeters, yMeters) {
   const court = layout.court;
   const yRatio = yMeters / COURT_LENGTH_METERS;
@@ -1176,7 +1124,7 @@ function screenToCourtPoint(screenX, screenY) {
 function clampPlayerPaddleX(xMeters) {
   const halfWidth = renderState.playerPaddle.width / 2;
 
-  return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
+  return clamp(xMeters, -halfWidth + BALL_RADIUS, COURT_WIDTH_METERS + halfWidth - BALL_RADIUS);
 }
 
 function clampPlayerPaddleY(yMeters) {
@@ -1190,7 +1138,7 @@ function clampPlayerPaddleY(yMeters) {
 function clampAiPaddleX(xMeters) {
   const halfWidth = renderState.aiPaddle.width / 2;
 
-  return clamp(xMeters, halfWidth, COURT_WIDTH_METERS - halfWidth);
+  return clamp(xMeters, -halfWidth + BALL_RADIUS, COURT_WIDTH_METERS + halfWidth - BALL_RADIUS);
 }
 
 function clampAiPaddleY(yMeters) {
@@ -1223,13 +1171,6 @@ function moveToward(current, target, maxStep) {
   }
 
   return current + Math.sign(target - current) * maxStep;
-}
-
-function lerpPoint(start, end, amount) {
-  return {
-    x: lerp(start.x, end.x, amount),
-    y: lerp(start.y, end.y, amount)
-  };
 }
 
 function preventGameGesture(event) {

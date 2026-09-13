@@ -107,9 +107,24 @@
 
 - [x] Add sound effects.
 - [ ] Add real padel scoring.
-- [ ] Add serve mechanic.
+- [x] Add serve from the current player paddle position.
 - [ ] Add difficulty selector.
 - [ ] Add local two-player mode.
 - [ ] Add pause/resume.
 - [ ] Add haptic feedback.
 - [ ] Add persistent high score or match history.
+
+## Court and Paddle Revision
+
+- [x] Remove paddle cast shadows; automatically match ball height.
+- [x] Replace side wall surfaces with 60% dotted mesh and 40% solid rear boundaries per half.
+- [x] Keep both back boundaries solid and contain the ball at every height.
+- [x] Allow play after the ball passes a paddle, including back-wall rebounds.
+
+## Gravity and Rules Revision
+
+- [x] Use constant gravity and target the opposing floor on returns.
+- [x] Count the second bounce across walls and net crossings.
+- [x] Penalize fence contacts on serve or before the opposing floor bounce; allow them after a rally bounce.
+- [x] Permit lateral paddle overhang with mobile control space.
+- [x] Check FIP rules and apply the official fence-contact rule.

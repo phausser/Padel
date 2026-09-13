@@ -29,7 +29,6 @@ assert.match(game, /requestAnimationFrame/, "game.js batches resize work into an
 assert.match(game, /drawCourtSurface/, "game.js draws the court surface");
 assert.match(game, /drawGlassWalls/, "game.js draws glass wall outlines");
 assert.doesNotMatch(game, /FAR_WIDTH_SCALE/, "game.js does not narrow the far side of the court");
-assert.match(game, /WALL_DEPTH_RATIO/, "game.js draws walls outward from the court");
 assert.match(game, /drawNet/, "game.js draws the center net");
 assert.match(game, /drawCourtMarkings/, "game.js draws court markings");
 assert.match(game, /drawPaddle/, "game.js draws paddles");
@@ -51,7 +50,6 @@ assert.match(game, /getPaddleContactDirection/, "game.js steers paddle hits by c
 assert.match(game, /PADDLE_COLLISION_DEPTH/, "game.js gives paddle collision a playable depth");
 assert.match(game, /PADDLE_SPIN_TRANSFER/, "game.js transfers paddle movement into ball spin");
 assert.match(game, /PADDLE_HALF_COURT_MARGIN/, "game.js allows paddle movement across each half");
-assert.match(game, /getPaddleRenderHeight/, "game.js syncs paddle render height to the ball");
 assert.match(game, /getHeightShadowOffset/, "game.js offsets shadows by object height");
 assert.match(game, /BALL_AIR_WALL_RESTITUTION/, "game.js constrains airborne wall collisions");
 assert.match(game, /BALL_PADDLE_STROKE_ACCELERATION/, "game.js changes return speed from paddle stroke");
@@ -86,3 +84,92 @@ assert.match(game, /addEventListener\("resize"/, "game.js listens for resize eve
 assert.match(game, /preventDefault\(\)/, "game.js prevents unwanted touch interactions");
 
 console.log("Smoke tests passed.");
+
+// Run the real physics with browser APIs stubbed, without starting the render loop.
+const { runInNewContext } = await import("node:vm");
+const sandbox = {
+  assert,
+  performance: { now: () => 0 },
+  document: { querySelector: () => ({ getContext: () => ({}), addEventListener() {} }) },
+  window: { addEventListener() {} }
+};
+runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
+  gameState.status = "playing";
+  for (const [x, y] of [[2, 12], [8, 19]]) {
+    Object.assign(renderState.playerPaddle, { x, y });
+    resetBall();
+    assert.equal(renderState.ball.isServe, true);
+    assert.equal(renderState.ball.x, x);
+    assert.ok(renderState.ball.y < y);
+    assert.ok(renderState.ball.vy < 0);
+    for (let i = 0; i < 240 && renderState.ball.y > 10; i += 1) updateBall(1 / 120);
+    assert.equal(gameState.status, "playing");
+    assert.ok(renderState.ball.y <= 10, "serve clears the center net");
+  }
+  for (const [x, y] of [[-1, 2], [11, 18], [5, -1], [5, 21]]) {
+    Object.assign(renderState.ball, { hasCourtBounce: true, x, y, z: 20, vx: x < 0 ? -3 : 3, vy: y < 0 ? -3 : 3 });
+    handleSideGlassCollision(renderState.ball);
+    handleBackGlassCollision(renderState.ball);
+    assert.ok(renderState.ball.x >= BALL_RADIUS && renderState.ball.x <= 10 - BALL_RADIUS);
+    assert.ok(renderState.ball.y >= BALL_RADIUS && renderState.ball.y <= 20 - BALL_RADIUS);
+    if (x < 0) assert.ok(renderState.ball.vx > 0);
+    if (x > 10) assert.ok(renderState.ball.vx < 0);
+    if (y < 0) assert.ok(renderState.ball.vy > 0);
+    if (y > 20) assert.ok(renderState.ball.vy < 0);
+  }
+  Object.assign(renderState.ball, { x: 5, y: 19.7, z: 2, vx: 1, vy: 3 });
+  handleDeadBall(renderState.ball);
+  assert.equal(gameState.status, "playing", "passing a paddle does not score OUT");
+
+  for (const x of [-1, 11]) {
+    for (const [isServe, hasCourtBounce, y, expected] of [
+      [true, true, 8, "point"],
+      [true, false, 8, "point"],
+      [false, false, 8, "point"],
+      [false, false, 12, "point"],
+      [false, true, 8, "playing"]
+    ]) {
+      renderState.score.ai = 0;
+      renderState.score.player = 0;
+      gameState.status = "playing";
+      gameState.bouncesOnSide = hasCourtBounce ? 1 : 0;
+      Object.assign(renderState.ball, { x, y, z: 2, vx: x < 0 ? -3 : 3, isServe, hasCourtBounce, lastHitBy: "player" });
+      const before = renderState.score.ai;
+      handleSideGlassCollision(renderState.ball);
+      assert.equal(gameState.status, expected, "FIP fence contact rule");
+      assert.equal(renderState.score.ai, before + (expected === "point" ? 1 : 0));
+      if (expected === "playing") {
+        assert.ok(x < 0 ? renderState.ball.vx > 0 : renderState.ball.vx < 0);
+        assert.equal(gameState.bouncesOnSide, 1, "fence does not reset bounce count");
+      }
+    }
+  }
+  gameState.status = "playing";
+  Object.assign(renderState.ball, { x: 5, y: -1, z: 2, hasCourtBounce: false, lastHitBy: "player" });
+  handleBackGlassCollision(renderState.ball);
+  assert.equal(gameState.status, "point", "opponent wall before floor is a fault");
+  gameState.status = "playing";
+  gameState.bouncesOnSide = 0;
+  Object.assign(renderState.ball, { x: 5, y: 4, z: 0, vz: -4, hasCourtBounce: false, lastHitBy: "player" });
+  handleCourtBounce(renderState.ball);
+  assert.equal(gameState.status, "playing", "one bounce is allowed");
+  renderState.ball.y = 11;
+  trackBallSide(renderState.ball);
+  assert.equal(gameState.bouncesOnSide, 1, "crossing the net does not erase the bounce");
+  renderState.ball.z = 0;
+  handleCourtBounce(renderState.ball);
+  assert.equal(gameState.status, "point", "second bounce ends rally");
+  gameState.status = "playing";
+  resetBall();
+  const initialZ = renderState.ball.z;
+  const initialVz = renderState.ball.vz;
+  updateBall(0.01);
+  assert.ok(Math.abs(renderState.ball.z - (initialZ + initialVz * 0.01 - 0.5 * 9.81 * 0.01 ** 2)) < 1e-9);
+  assert.ok(clampPlayerPaddleX(11) > 10 && clampPlayerPaddleX(-1) < 0);
+  Object.assign(renderState.playerPaddle, { x: 10.5, y: 18 });
+  Object.assign(renderState.ball, { x: 9.8, y: 18.1, z: 2, vy: 5, lastHitBy: "ai" });
+  handlePaddleCollision(renderState.ball, renderState.playerPaddle, -1, 9.8, 17.8, "player");
+  assert.equal(renderState.ball.isServe, false, "return ends service restrictions");
+  assert.ok(renderState.ball.vy < 0, "outside paddle returns ball with its inside edge");
+`, sandbox);
+console.log("Serve and boundary physics tests passed.");
