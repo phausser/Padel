@@ -469,7 +469,8 @@ function getAiTargetX(ball) {
     return moveToward(renderState.aiPaddle.x, COURT_WIDTH_METERS / 2, AI_CENTERING_SPEED);
   }
 
-  const predictedX = predictBallXAtY(ball, AI_PADDLE_Y);
+  // Aim where the paddle is intercepting, including its forward movement.
+  const predictedX = predictBallXAtY(ball, renderState.aiPaddle.y);
   const pressure = clamp(Math.abs(ball.vy) / 8.4, 0, 1);
 
   aiState.mistakeOffset = lerp(
@@ -1018,7 +1019,7 @@ function drawBall(ball) {
   const shadowOffset = getHeightShadowOffset(ball.z);
 
   context.save();
-  context.globalAlpha = 0.28 - heightRatio * 0.16;
+  context.globalAlpha = 0.58 - heightRatio * 0.24;
   context.filter = `blur(${shadowBlur}px)`;
   context.beginPath();
   context.ellipse(
@@ -1030,7 +1031,7 @@ function drawBall(ball) {
     0,
     Math.PI * 2
   );
-  context.fillStyle = "#0b4f78";
+  context.fillStyle = "#052d46";
   context.fill();
   context.restore();
 

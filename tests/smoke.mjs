@@ -229,3 +229,30 @@ runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
   assert.notEqual(renderState.ball.x, firstX, "next point switches service side");
 `, sandbox);
 console.log("Serve and boundary physics tests passed.");
+
+runInNewContext(game.replace(/resizeCanvas\(\);\s*$/, "") + `
+  for (const delta of [1 / 30, 1 / 60, 1 / 120]) {
+    for (const randomValue of [0, 0.5, 1]) {
+      Math.random = () => randomValue;
+      for (const points of [0, 1, 2, 3]) {
+        gameState.server = "player";
+        gameState.status = "playing";
+        gameState.serveAttempt = 1;
+        Object.assign(renderState.score, { player: points, ai: 0 });
+        resetBall();
+        let bouncedBeforeReturn = false;
+        for (let frame = 0; frame < 6 / delta; frame += 1) {
+          updateAiPaddle(delta);
+          updateBall(delta);
+          bouncedBeforeReturn ||= renderState.ball.hasCourtBounce;
+          if (renderState.ball.lastHitBy === "ai" || gameState.status !== "playing") break;
+        }
+        assert.equal(gameState.status, "playing", "AI receives serve without a fault");
+        assert.equal(renderState.ball.lastHitBy, "ai", "AI returns serves from both sides");
+        assert.ok(bouncedBeforeReturn, "AI waits for the service bounce");
+        assert.ok(renderState.ball.vy > 0, "AI sends the return toward the player");
+      }
+    }
+  }
+`, { ...sandbox });
+console.log("AI serve reception tests passed.");
