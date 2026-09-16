@@ -15,10 +15,12 @@ const SIDE_WALL_LENGTH = COURT_LENGTH_METERS / 2 * 0.4;
 const PLAYER_PADDLE_Y = 18.35;
 const AI_PADDLE_Y = 1.65;
 const PADDLE_HALF_COURT_MARGIN = 0.55;
-const PLAYER_PADDLE_WIDTH = 2.2;
-const PLAYER_MOBILE_PADDLE_WIDTH = 2.58;
+const PLAYER_PADDLE_WIDTH = 1.76;
+const PLAYER_MOBILE_PADDLE_WIDTH = 2.06;
 const AI_PADDLE_WIDTH = 1.95;
 const PADDLE_SMOOTHING = 0.35;
+const TOUCH_DRAG_GAIN = 1.15;
+const TOUCH_FINGER_CLEARANCE = 1.45;
 const BALL_START_X = 5;
 const BALL_RADIUS = 0.16;
 const BALL_GRAVITY = 9.81;
@@ -97,6 +99,11 @@ const inputState = {
   activePointerId: null,
   targetX: renderState.playerPaddle.x,
   targetY: renderState.playerPaddle.y,
+  isRelativeDrag: false,
+  dragOriginX: 0,
+  dragOriginY: 0,
+  dragPaddleX: renderState.playerPaddle.x,
+  dragPaddleY: renderState.playerPaddle.y,
   smoothingFrame: 0
 };
 
@@ -1014,24 +1021,26 @@ function drawBall(ball) {
   const edge = projectCourtPoint(ball.x + ball.radius, ball.y);
   const radius = Math.max(4, Math.abs(edge.x - center.x));
   const heightRatio = clamp(ball.z / PADDLE_REACH_HEIGHT, 0, 1);
-  const shadowBlur = Math.max(2.5, radius * (0.45 + heightRatio * 1.8));
-  const shadowScale = 1.05 + heightRatio * 1.35;
+  const shadowBlur = Math.max(1, radius * (0.12 + heightRatio * 0.58));
+  const shadowScale = 1.02 + heightRatio * 0.9;
   const shadowOffset = getHeightShadowOffset(ball.z);
+  const shadowX = center.x + shadowOffset.x;
+  const shadowY = center.y + shadowOffset.y;
+  const shadowRadiusX = radius * shadowScale;
+  const shadowRadiusY = radius * (0.5 + heightRatio * 0.3) * shadowScale;
 
   context.save();
-  context.globalAlpha = 0.58 - heightRatio * 0.24;
+  context.fillStyle = "#03253a";
+  context.globalAlpha = 0.24 - heightRatio * 0.1;
+  context.filter = `blur(${shadowBlur * 2.6}px)`;
+  context.beginPath();
+  context.ellipse(shadowX, shadowY, shadowRadiusX * 1.5, shadowRadiusY * 1.5, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.globalAlpha = 0.82 - heightRatio * 0.24;
   context.filter = `blur(${shadowBlur}px)`;
   context.beginPath();
-  context.ellipse(
-    center.x + shadowOffset.x,
-    center.y + shadowOffset.y,
-    radius * shadowScale,
-    radius * (0.48 + heightRatio * 0.32),
-    0,
-    0,
-    Math.PI * 2
-  );
-  context.fillStyle = "#052d46";
+  context.ellipse(shadowX, shadowY, shadowRadiusX, shadowRadiusY, 0, 0, Math.PI * 2);
   context.fill();
   context.restore();
 
@@ -1256,9 +1265,41 @@ function handlePointerInput(event) {
   }
 
   const courtPoint = screenToCourtPoint(event.clientX, event.clientY);
-  inputState.targetX = clampPlayerPaddleX(courtPoint.x);
-  inputState.targetY = clampPlayerPaddleY(courtPoint.y);
+
+  if (inputState.isRelativeDrag) {
+    inputState.targetX = clampPlayerPaddleX(
+      inputState.dragPaddleX + (courtPoint.x - inputState.dragOriginX) * TOUCH_DRAG_GAIN
+    );
+    inputState.targetY = clampPlayerPaddleY(
+      inputState.dragPaddleY + (courtPoint.y - inputState.dragOriginY) * TOUCH_DRAG_GAIN
+    );
+  } else {
+    inputState.targetX = clampPlayerPaddleX(courtPoint.x);
+    inputState.targetY = clampPlayerPaddleY(courtPoint.y);
+  }
+
   queueInputRender();
+}
+
+function usesRelativeDrag(event) {
+  return event.pointerType === "touch" || event.pointerType === "pen";
+}
+
+function beginDrag(event) {
+  const courtPoint = screenToCourtPoint(event.clientX, event.clientY);
+
+  inputState.isRelativeDrag = usesRelativeDrag(event);
+  inputState.dragOriginX = courtPoint.x;
+  inputState.dragOriginY = courtPoint.y;
+  inputState.dragPaddleX = inputState.targetX;
+  inputState.dragPaddleY = inputState.targetY;
+
+  if (
+    inputState.isRelativeDrag &&
+    Math.abs(courtPoint.y - inputState.targetY) < TOUCH_FINGER_CLEARANCE
+  ) {
+    inputState.dragPaddleY = clampPlayerPaddleY(courtPoint.y - TOUCH_FINGER_CLEARANCE);
+  }
 }
 
 function handlePointerDown(event) {
@@ -1266,6 +1307,7 @@ function handlePointerDown(event) {
   unlockAudio();
   inputState.activePointerId = event.pointerId;
   canvas.setPointerCapture?.(event.pointerId);
+  beginDrag(event);
   handlePointerInput(event);
   startGame();
 }
@@ -1278,6 +1320,7 @@ function handlePointerMove(event) {
 function handlePointerEnd(event) {
   if (event.pointerId === inputState.activePointerId) {
     inputState.activePointerId = null;
+    inputState.isRelativeDrag = false;
     canvas.releasePointerCapture?.(event.pointerId);
   }
 }
